@@ -42,9 +42,10 @@ impl App {
             Message::ThemeSelected(theme) => {
                 println!("{}", theme)
             }
-            Message::Edit(action) => {
-                self.text_content.perform(action);
-            }
+            Message::Edit(action) => match action {
+                text_editor::Action::Scroll { .. } => (),
+                _ => self.text_content.perform(action),
+            },
         }
 
         Task::none()
@@ -66,38 +67,31 @@ impl App {
         let font_size = 15.0;
         let line_height = 1.1;
 
-        let second_scroll_id = iced::widget::scrollable::Id::new("2");
-
-        row![
-            line_number(
-                self.text_content.line_count(),
-                font_size,
-                line_height,
-                second_scroll_id
-            ),
-            text_editor(&self.text_content)
-                .font(Font::MONOSPACE)
-                .size(font_size)
-                .line_height(line_height)
-                .padding(Padding {
-                    top: 0.0,
-                    bottom: 0.0,
-                    left: 5.0,
-                    right: 0.0,
-                })
-                .height(Length::Fill)
-                .on_action(Message::Edit),
+        column![
+            scrollable(row![
+                line_number(self.text_content.line_count(), font_size, line_height,),
+                text_editor(&self.text_content)
+                    .font(Font::MONOSPACE)
+                    .size(font_size)
+                    .line_height(line_height)
+                    .padding(Padding {
+                        top: 0.0,
+                        bottom: 0.0,
+                        left: 5.0,
+                        right: 0.0,
+                    })
+                    .on_action(Message::Edit)
+            ])
+            .height(Length::Fill)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::default().scroller_width(0).width(0),
+            ))
         ]
         .into()
     }
 }
 
-fn line_number(
-    line_count: usize,
-    font_size: f32,
-    line_height: f32,
-    scroller: scrollable::Id,
-) -> Element<'static, Message> {
+fn line_number(line_count: usize, font_size: f32, line_height: f32) -> Element<'static, Message> {
     let mut lines: Vec<Element<Message>> = Vec::new();
     let box_height = text::LineHeight::from(line_height).to_absolute(Pixels(font_size));
 
@@ -115,16 +109,12 @@ fn line_number(
         lines.push(container.into());
     }
 
-    scrollable(column(lines).padding(Padding {
-        top: 0.0,
-        bottom: 0.0,
-        left: 0.0,
-        right: 15.0,
-    }))
-    .id(scroller)
-    .height(Length::Fill)
-    .direction(scrollable::Direction::Vertical(
-        scrollable::Scrollbar::default().scroller_width(0).width(0),
-    ))
-    .into()
+    column(lines)
+        .padding(Padding {
+            top: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+            right: 15.0,
+        })
+        .into()
 }
