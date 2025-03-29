@@ -1,4 +1,9 @@
-use std::{error::Error, fs, io, path::PathBuf, usize};
+use std::{
+    error::Error,
+    ffi, fs, io,
+    path::{Path, PathBuf},
+    usize,
+};
 
 use iced::{
     Alignment, Element, Font, Length, Padding, Pixels, Task, Theme, highlighter,
@@ -25,6 +30,8 @@ struct App {
     value: u64,
     text_content: text_editor::Content,
     working_dir: Option<PathBuf>,
+    current_file: Option<PathBuf>,
+    syntax_theme: highlighter::Theme,
 }
 
 impl App {
@@ -37,6 +44,8 @@ impl App {
                     "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40\n41\n42\n43\n44\n45\n46\n47\n48\n49\n50\n51\n52\n53\n54\n55\n56\n57\n58\n59\n60\n61\n62\n63\n64\n65\n66\n67\n68\n69\n70\n71\n72\n73\n74\n75\n76\n77\n78\n79\n80\n81\n82\n83\n84\n85\n86\n87\n88\n89\n90\n9",
                 ),
                 working_dir: None,
+                current_file: None,
+                syntax_theme: highlighter::Theme::SolarizedDark,
             },
             Task::none(),
         )
@@ -92,6 +101,14 @@ impl App {
                         left: 5.0,
                         right: 0.0,
                     })
+                    .highlight(
+                        self.current_file
+                            .as_deref()
+                            .and_then(Path::extension)
+                            .and_then(ffi::OsStr::to_str)
+                            .unwrap_or("rs"),
+                        self.syntax_theme,
+                    )
                     .on_action(Message::Edit)
             ])
             .height(Length::Fill)
