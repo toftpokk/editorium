@@ -1,6 +1,7 @@
 use std::{ffi, fs, path};
 
-use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter, widget};
+use iced::widget::{Row, button, column, container, row, scrollable, text, text_editor};
+use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter};
 
 use crate::Message;
 
@@ -27,11 +28,11 @@ impl TabView {
         let line_height = 1.1;
         let syntax_theme = highlighter::Theme::SolarizedDark;
 
-        if let Some(tab_index) = self.current_tab {
+        let main = if let Some(tab_index) = self.current_tab {
             let tab = &self.tabs[tab_index - 1];
-            widget::scrollable(widget::row![
+            row![
                 line_number(tab.content.line_count(), font_size, line_height,),
-                widget::text_editor(&tab.content)
+                text_editor(&tab.content)
                     .font(Font::MONOSPACE)
                     .size(font_size)
                     .line_height(line_height)
@@ -50,30 +51,48 @@ impl TabView {
                         syntax_theme,
                     )
                     .on_action(Message::Edit)
-            ])
-            .height(Length::Fill)
-            .direction(widget::scrollable::Direction::Vertical(
-                widget::scrollable::Scrollbar::default()
-                    .scroller_width(0)
-                    .width(0),
-            ))
-            .into()
+            ]
         } else {
-            widget::Column::new().into()
+            Row::new()
+        };
+
+        let mut tab_list = Row::new();
+        for tab in &self.tabs {
+            // let file_name = tab.file_path.unwrap_or("");
+            let file_name = if let Some(path) = &tab.file_path {
+                path.file_name()
+                    .expect("invalid file")
+                    .to_str()
+                    .expect("invalid file string")
+            } else {
+                ""
+            };
+
+            tab_list = tab_list.push(button(file_name));
         }
+
+        column![
+            tab_list,
+            scrollable(main)
+                .height(Length::Fill)
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::default().scroller_width(0).width(0),
+                )),
+        ]
+        .into()
     }
 }
 
 pub struct Tab {
     file_path: Option<path::PathBuf>,
-    content: widget::text_editor::Content,
+    content: text_editor::Content,
 }
 
 impl Tab {
     pub fn new() -> Self {
         Self {
             file_path: None,
-            content: widget::text_editor::Content::new(),
+            content: text_editor::Content::new(),
         }
     }
 
@@ -88,7 +107,7 @@ impl Tab {
         match fs::read_to_string(&file_path) {
             Ok(content) => {
                 self.file_path = Some(file_path);
-                self.content = widget::text_editor::Content::with_text(&content)
+                self.content = text_editor::Content::with_text(&content)
             }
             Err(err) => {
                 log::error!("Could not load file {:?}: {}", file_path, err)
@@ -99,11 +118,11 @@ impl Tab {
 
 fn line_number(line_count: usize, font_size: f32, line_height: f32) -> Element<'static, Message> {
     let mut lines: Vec<Element<Message>> = Vec::new();
-    let box_height = widget::text::LineHeight::from(line_height).to_absolute(Pixels(font_size));
+    let box_height = text::LineHeight::from(line_height).to_absolute(Pixels(font_size));
 
     for i in 1..line_count.saturating_add(1) {
-        let container = widget::container(
-            widget::text(i)
+        let container = container(
+            text(i)
                 .font(Font::MONOSPACE)
                 .size(font_size)
                 .line_height(line_height),
@@ -115,7 +134,7 @@ fn line_number(line_count: usize, font_size: f32, line_height: f32) -> Element<'
         lines.push(container.into());
     }
 
-    widget::column(lines)
+    column(lines)
         .padding(Padding {
             top: 0.0,
             bottom: 0.0,
