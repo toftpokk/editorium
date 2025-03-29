@@ -106,7 +106,7 @@ impl App {
                             .as_deref()
                             .and_then(Path::extension)
                             .and_then(ffi::OsStr::to_str)
-                            .unwrap_or("rs"),
+                            .unwrap_or(""),
                         self.syntax_theme,
                     )
                     .on_action(Message::Edit)
@@ -125,7 +125,10 @@ impl App {
 
     fn load_file(&mut self, file: PathBuf) {
         match fs::read_to_string(&file) {
-            Ok(content) => self.text_content = text_editor::Content::with_text(&content),
+            Ok(content) => {
+                self.current_file = Some(file);
+                self.text_content = text_editor::Content::with_text(&content)
+            }
             Err(err) => {
                 log::error!("Could not load file {:?}: {}", file, err)
             }
