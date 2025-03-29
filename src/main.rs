@@ -1,15 +1,17 @@
-use std::usize;
+use std::{error::Error, fs, io, path::PathBuf, usize};
 
 use iced::{
     Alignment, Element, Font, Length, Padding, Pixels, Task, highlighter,
     widget::{Container, button, column, container, pick_list, row, scrollable, text, text_editor},
 };
+use rfd::FileDialog;
 
 #[derive(Debug, Clone)]
 enum Message {
     Increment,
     ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
+    SelectFile,
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -46,6 +48,11 @@ impl App {
                 text_editor::Action::Scroll { .. } => (),
                 _ => self.text_content.perform(action),
             },
+            Message::SelectFile => {
+                if let Some(file) = select_file() {
+                    self.load_file(file)
+                }
+            }
         }
 
         Task::none()
@@ -53,11 +60,11 @@ impl App {
 
     fn view(&self) -> Element<Message> {
         // let file_selection = row![]
-        // let nav_bar = row![
-        //     // current_project
-        //     // current git branch
-        //     // run
-        // ];
+        let nav_bar = row![
+            button("Open File").on_press(Message::SelectFile) //     // current_project
+                                                              //     // current git branch
+                                                              //     // run
+        ];
         // column![
         // container().width(Length::Fill)
         // nav_bar
@@ -68,6 +75,7 @@ impl App {
         let line_height = 1.1;
 
         column![
+            nav_bar,
             scrollable(row![
                 line_number(self.text_content.line_count(), font_size, line_height,),
                 text_editor(&self.text_content)
@@ -88,6 +96,15 @@ impl App {
             ))
         ]
         .into()
+    }
+
+    fn load_file(&mut self, file: PathBuf) {
+        match fs::read_to_string(&file) {
+            Ok(content) => self.text_content = text_editor::Content::with_text(&content),
+            Err(err) => {
+                log::error!("Could not load file {:?}: {}", file, err)
+            }
+        }
     }
 }
 
@@ -117,4 +134,13 @@ fn line_number(line_count: usize, font_size: f32, line_height: f32) -> Element<'
             right: 15.0,
         })
         .into()
+}
+
+fn select_file() -> Option<PathBuf> {
+    let file = FileDialog::new().set_title("Open a file...").pick_file();
+
+    if let Some(file) = file {
+        return Some(file);
+    }
+    return None;
 }
