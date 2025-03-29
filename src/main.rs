@@ -14,6 +14,7 @@ enum Message {
     ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
     SelectFile,
+    ChangeTab(usize),
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -61,6 +62,9 @@ impl App {
                     tab.open(&file_path);
                 }
                 self.tabs.push(tab);
+            }
+            Message::ChangeTab(tab_index) => {
+                self.tabs.change_tab(tab_index);
             }
         }
 

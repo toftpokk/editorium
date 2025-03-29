@@ -20,7 +20,13 @@ impl TabView {
 
     pub fn push(&mut self, tab: Tab) {
         self.tabs.push(tab);
-        self.current_tab = Some(self.tabs.len());
+        self.current_tab = Some(self.tabs.len() - 1);
+    }
+
+    pub fn change_tab(&mut self, tab_index: usize) {
+        if tab_index < self.tabs.len() {
+            self.current_tab = Some(tab_index);
+        }
     }
 
     pub fn view(&self) -> Element<Message> {
@@ -29,7 +35,7 @@ impl TabView {
         let syntax_theme = highlighter::Theme::SolarizedDark;
 
         let main = if let Some(tab_index) = self.current_tab {
-            let tab = &self.tabs[tab_index - 1];
+            let tab = &self.tabs[tab_index];
             row![
                 line_number(tab.content.line_count(), font_size, line_height,),
                 text_editor(&tab.content)
@@ -56,20 +62,21 @@ impl TabView {
             Row::new()
         };
 
-        let mut tab_list = Row::new();
-        for tab in &self.tabs {
-            // let file_name = tab.file_path.unwrap_or("");
-            let file_name = if let Some(path) = &tab.file_path {
-                path.file_name()
-                    .expect("invalid file")
-                    .to_str()
-                    .expect("invalid file string")
-            } else {
-                ""
-            };
-
-            tab_list = tab_list.push(button(file_name));
-        }
+        let tab_list = self
+            .tabs
+            .iter()
+            .enumerate()
+            .fold(Row::new(), |row, (index, tab)| {
+                let file_name = if let Some(path) = &tab.file_path {
+                    path.file_name()
+                        .expect("invalid file")
+                        .to_str()
+                        .expect("invalid file string")
+                } else {
+                    ""
+                };
+                row.push(button(file_name).on_press(Message::ChangeTab(index)))
+            });
 
         column![
             tab_list,
