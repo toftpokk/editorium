@@ -1,4 +1,4 @@
-use std::{fmt, fs, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
 
 use iced::{
     Element, Length, Subscription, Task, Theme,
@@ -9,6 +9,7 @@ use iced::{
 };
 use rfd::FileDialog;
 
+mod key_binds;
 mod project;
 mod tab;
 
@@ -36,6 +37,7 @@ fn main() -> Result<(), iced::Error> {
 struct App {
     tabs: tab::TabView,
     project_tree: ProjectTree,
+    key_binds: HashMap<key_binds::KeyBind, Message>,
 }
 
 impl App {
@@ -43,6 +45,7 @@ impl App {
         let mut app = Self {
             tabs: tab::TabView::new(),
             project_tree: ProjectTree::new(),
+            key_binds: key_binds::default(),
         };
         (app, Task::none())
     }
@@ -56,7 +59,7 @@ impl App {
                 text_editor::Action::Scroll { .. } => (),
                 _ => {
                     if let Some(t) = self.tabs.get_current() {
-                        t.content.perform(action);
+                        t.action(action);
                     }
                 }
             },
@@ -83,8 +86,11 @@ impl App {
                 }
             }
             Message::KeyPressed(modifier, key) => {
-                if modifier == Modifiers::CTRL && key == keyboard::Key::Character("s".into()) {
-                    return self.update(Message::SaveFile);
+                if let Some(value) = self.key_binds.get(&key_binds::KeyBind {
+                    modifiers: modifier,
+                    key: key,
+                }) {
+                    return self.update(value.clone());
                 }
             }
             _ => {
