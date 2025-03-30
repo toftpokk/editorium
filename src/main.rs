@@ -83,7 +83,7 @@ impl App {
     }
 
     fn view(&self) -> Element<Message> {
-        let cwd = PathBuf::from_str("/home").expect("could not get cwd");
+        let cwd = PathBuf::from_str("./").expect("could not get cwd");
 
         let recent_projects = vec![Project::new(cwd)];
         let nav_bar = row![
@@ -163,7 +163,15 @@ struct Project {
 }
 
 impl Project {
-    fn new(path: PathBuf) -> Self {
+    fn new(file_path: PathBuf) -> Self {
+        let path = match fs::canonicalize(&file_path) {
+            Ok(ok) => ok,
+            Err(err) => {
+                log::error!("could not canonicalize path {:?}: {}", file_path, err);
+                file_path
+            }
+        };
+
         let name = path
             .file_name()
             .expect("invalid dir name")
