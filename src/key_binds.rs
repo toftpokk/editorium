@@ -21,5 +21,13 @@ pub fn default() -> HashMap<KeyBind, Message> {
         Message::SaveFile,
     );
 
+    key_bind.insert(
+        KeyBind {
+            modifiers: Modifiers::CTRL,
+            key: Key::Character("w".into()),
+        },
+        Message::TabClose,
+    );
+
     key_bind
 }

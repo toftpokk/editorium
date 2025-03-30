@@ -23,6 +23,7 @@ enum Message {
     OpenFile(PathBuf),
     OpenProject(PathBuf),
     TabSelected(usize),
+    TabClose,
     SaveFile,
 }
 
@@ -93,6 +94,7 @@ impl App {
                     return self.update(value.clone());
                 }
             }
+            Message::TabClose => self.tabs.close(self.tabs.get_active_pos()),
             _ => {
                 todo!()
             }
@@ -181,15 +183,8 @@ impl App {
     }
 
     fn open_file(&mut self, file_path: PathBuf) {
-        let duplicate_idx = self.tabs.tabs().iter().position(|tab| {
-            if let Some(path) = tab.file_path.clone() {
-                path == file_path
-            } else {
-                false
-            }
-        });
-        if let Some(idx) = duplicate_idx {
-            self.tabs.select(idx);
+        if let Some(pos) = self.tabs.get_pos(&file_path) {
+            self.tabs.select(pos);
             return;
         }
         let mut tab = tab::Tab::new();

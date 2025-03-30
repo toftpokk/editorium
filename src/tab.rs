@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{ffi, fs, path};
 
 use iced::widget::{
@@ -9,33 +10,39 @@ use iced_aw::TabBar;
 use crate::Message;
 
 pub struct TabView {
-    active_tab: usize,
+    active_pos: usize,
     tabs: Vec<Tab>,
 }
 
 impl TabView {
     pub fn new() -> Self {
         Self {
-            active_tab: usize::default(),
+            active_pos: usize::default(),
             tabs: Vec::new(),
         }
     }
 
-    pub fn tabs(&self) -> &Vec<Tab> {
-        &self.tabs
-    }
-
     pub fn push(&mut self, tab: Tab) -> usize {
         self.tabs.push(tab);
-        self.tabs.len() - 1
+        self.tabs.len().saturating_add_signed(-1)
     }
 
-    pub fn select(&mut self, selected: usize) {
-        self.active_tab = selected
+    pub fn get_pos(&self, file_path: &PathBuf) -> Option<usize> {
+        self.tabs.iter().position(|tab| {
+            if let Some(path) = tab.file_path.clone() {
+                path == *file_path
+            } else {
+                false
+            }
+        })
+    }
+
+    pub fn select(&mut self, pos: usize) {
+        self.active_pos = pos
     }
 
     pub fn view(&self) -> Element<Message> {
-        let main = if let Some(tab) = self.tabs.get(self.active_tab) {
+        let main = if let Some(tab) = self.tabs.get(self.active_pos) {
             tab.view()
         } else {
             scrollable(Row::new())
@@ -50,18 +57,25 @@ impl TabView {
                         tab_bar.push(idx, iced_aw::TabLabel::Text(tab.name.to_owned()))
                     })
                     .tab_width(Length::Shrink)
-                    .set_active_tab(&self.active_tab),
+                    .set_active_tab(&self.active_pos),
             )
             .push(main)
             .into()
     }
 
-    pub fn get_current(&mut self) -> Option<&mut Tab> {
-        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-            Some(tab)
-        } else {
-            None
+    pub fn close(&mut self, pos: usize) {
+        if let Some(_) = self.tabs.get(pos) {
+            self.tabs.remove(pos);
+            self.active_pos = pos.saturating_add_signed(-1);
         }
+    }
+
+    pub fn get_active_pos(&self) -> usize {
+        self.active_pos
+    }
+
+    pub fn get_current(&mut self) -> Option<&mut Tab> {
+        self.tabs.get_mut(self.active_pos)
     }
 }
 
