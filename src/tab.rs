@@ -67,8 +67,9 @@ impl TabView {
 
 pub struct Tab {
     pub name: String,
+    file_name: Option<String>,
     pub file_path: Option<path::PathBuf>,
-    pub content: text_editor::Content,
+    content: text_editor::Content,
 }
 
 impl Tab {
@@ -76,6 +77,7 @@ impl Tab {
         Self {
             name: "New Tab".to_owned(),
             file_path: None,
+            file_name: None,
             content: text_editor::Content::new(),
         }
     }
@@ -91,12 +93,14 @@ impl Tab {
         match fs::read_to_string(&file_path) {
             Ok(content) => {
                 self.content = text_editor::Content::with_text(&content);
-                self.name = file_path
+                let file_name = file_path
                     .file_name()
                     .expect("invalid file")
                     .to_str()
                     .expect("invalid file name")
                     .to_owned();
+                self.name = file_name.clone();
+                self.file_name = Some(file_name);
                 self.file_path = Some(file_path);
             }
             Err(err) => {
@@ -105,15 +109,24 @@ impl Tab {
         }
     }
 
-    pub fn save(&self) {
+    pub fn save(&mut self) {
         if let Some(path) = &self.file_path {
             match fs::write(path, self.content.text()) {
-                Ok(()) => {}
+                Ok(()) => self.name = self.get_title(),
                 Err(err) => {
-                    log::error!("{}", err)
+                    log::error!("{}", err);
+                    return;
                 }
             }
         }
+    }
+
+    pub fn action(&mut self, action: text_editor::Action) {
+        match &action {
+            text_editor::Action::Edit(_) => self.name = format!("{}*", self.get_title()),
+            _ => {}
+        }
+        self.content.perform(action)
     }
 
     pub fn view(&self) -> Scrollable<Message> {
@@ -147,6 +160,14 @@ impl Tab {
         .direction(scrollable::Direction::Vertical(
             scrollable::Scrollbar::default().scroller_width(0).width(0),
         ))
+    }
+
+    fn get_title(&self) -> String {
+        if let Some(file_name) = &self.file_name {
+            file_name.clone()
+        } else {
+            "New Tab".into()
+        }
     }
 }
 
