@@ -1,16 +1,15 @@
 use std::{ffi, fs, path};
 
-use iced::widget::scrollable::RelativeOffset;
 use iced::widget::{
-    Row, Scrollable, button, column, container, row, scrollable, text, text_editor,
+    Column, Row, Scrollable, button, column, container, row, scrollable, text, text_editor,
 };
 use iced::{Alignment, Element, Font, Length, Padding, Pixels, Task, highlighter};
+use iced_aw::TabBar;
 
 use crate::Message;
 
 pub struct TabView {
     active_tab: usize,
-    current_tab: Option<usize>,
     tabs: Vec<Tab>,
 }
 
@@ -18,23 +17,13 @@ impl TabView {
     pub fn new() -> Self {
         Self {
             active_tab: usize::default(),
-            current_tab: None,
             tabs: Vec::new(),
         }
     }
 
-    pub fn push(&mut self, tab: Tab) {
+    pub fn push(&mut self, tab: Tab) -> usize {
         self.tabs.push(tab);
-        self.current_tab = Some(self.tabs.len() - 1);
-    }
-
-    pub fn change_tab(&mut self, tab_index: usize) -> Task<Message> {
-        if tab_index < self.tabs.len() {
-            self.current_tab = Some(tab_index);
-            // let tab = &self.tabs[tab_index];
-            // return scrollable::snap_to(tab.scroll_id.clone(), tab.scroll_offset);
-        }
-        Task::none()
+        self.tabs.len() - 1
     }
 
     pub fn select(&mut self, selected: usize) {
@@ -42,64 +31,46 @@ impl TabView {
     }
 
     pub fn view(&self) -> Element<Message> {
-        let main = if let Some(tab_index) = self.current_tab {
-            let tab = &self.tabs[tab_index];
+        let main = if let Some(tab) = self.tabs.get(self.active_tab) {
             tab.view()
         } else {
             scrollable(Row::new())
         };
 
-        // let tab_list = self
-        //     .tabs
-        //     .iter()
-        //     .enumerate()
-        //     .fold(Row::new(), |row, (index, tab)| {
-        //         let file_name = if let Some(path) = &tab.file_path {
-        //             path.file_name()
-        //                 .expect("invalid file")
-        //                 .to_str()
-        //                 .expect("invalid file string")
-        //         } else {
-        //             ""
-        //         };
-        //         row.push(button(file_name).on_press(Message::ChangeTab(index)))
-        //     });
-
-        column![iced_aw::TabBar::new(Message::TabSelected), main].into()
+        Column::new()
+            .push(
+                self.tabs
+                    .iter()
+                    .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
+                        let idx = tab_bar.size();
+                        tab_bar.push(idx, iced_aw::TabLabel::Text(tab.name.to_owned()))
+                    })
+                    .tab_width(Length::Shrink)
+                    .set_active_tab(&self.active_tab),
+            )
+            .push(main)
+            .into()
     }
 
     pub fn perform(&mut self, action: text_editor::Action) {
-        if let Some(tab_index) = self.current_tab {
-            self.tabs[tab_index].content.perform(action);
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.content.perform(action)
         }
-    }
-
-    https://github.com/iced-rs/iced_aw/blob/main/examples/tab_bar.rs
-
-    pub fn set_offset(&mut self, id: scrollable::Id, x: f32, y: f32) {
-        // for tab in &mut self.tabs {
-        //     if tab.scroll_id == id {
-        //         tab.scroll_offset.x = x;
-        //         tab.scroll_offset.y = y;
-        //     }
-        // }
     }
 }
 
 pub struct Tab {
+    name: String,
     file_path: Option<path::PathBuf>,
     content: text_editor::Content,
-    scroll_id: scrollable::Id,
-    scroll_offset: scrollable::RelativeOffset,
 }
 
 impl Tab {
     pub fn new() -> Self {
         Self {
+            name: "New Tab".to_owned(),
             file_path: None,
             content: text_editor::Content::new(),
-            scroll_id: scrollable::Id::unique(),
-            scroll_offset: scrollable::RelativeOffset::default(),
         }
     }
 
@@ -113,8 +84,14 @@ impl Tab {
         };
         match fs::read_to_string(&file_path) {
             Ok(content) => {
+                self.content = text_editor::Content::with_text(&content);
+                self.name = file_path
+                    .file_name()
+                    .expect("invalid file")
+                    .to_str()
+                    .expect("invalid file name")
+                    .to_owned();
                 self.file_path = Some(file_path);
-                self.content = text_editor::Content::with_text(&content)
             }
             Err(err) => {
                 log::error!("Could not load file {:?}: {}", file_path, err)
@@ -153,10 +130,6 @@ impl Tab {
         .direction(scrollable::Direction::Vertical(
             scrollable::Scrollbar::default().scroller_width(0).width(0),
         ))
-        .on_scroll(|viewport| {
-            let RelativeOffset { x, y } = viewport.relative_offset();
-            Message::TabScroll(self.scroll_id.clone(), x, y)
-        })
     }
 }
 

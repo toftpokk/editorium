@@ -14,8 +14,6 @@ enum Message {
     ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
     SelectFile,
-    ChangeTab(usize),
-    TabScroll(scrollable::Id, f32, f32),
     TabSelected(usize),
 }
 
@@ -59,11 +57,13 @@ impl App {
                 if let Some(file_path) = select_file(&self.working_dir) {
                     tab.open(&file_path);
                 }
-                self.tabs.push(tab);
+                let idx = self.tabs.push(tab);
+                self.tabs.select(idx);
             }
-            Message::ChangeTab(tab_index) => return self.tabs.change_tab(tab_index),
-            Message::TabScroll(id, x, y) => (self.tabs.set_offset(id, x, y)),
             Message::TabSelected(tab) => self.tabs.select(tab),
+            _ => {
+                todo!()
+            }
         }
 
         Task::none()
