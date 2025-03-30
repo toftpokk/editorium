@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use iced::{
     Element, Task, Theme, highlighter,
-    widget::{button, column, row, text_editor},
+    widget::{button, column, row, scrollable, text_editor},
 };
 use rfd::FileDialog;
 
@@ -15,6 +15,8 @@ enum Message {
     Edit(text_editor::Action),
     SelectFile,
     ChangeTab(usize),
+    TabScroll(scrollable::Id, f32, f32),
+    TabSelected(usize),
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -25,7 +27,6 @@ fn main() -> Result<(), iced::Error> {
 
 struct App {
     value: u64,
-    text_content: text_editor::Content,
     working_dir: Option<PathBuf>,
     tabs: tab::TabView,
 }
@@ -35,9 +36,6 @@ impl App {
         (
             App {
                 value: 1,
-                text_content: text_editor::Content::with_text(
-                    "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40\n41\n42\n43\n44\n45\n46\n47\n48\n49\n50\n51\n52\n53\n54\n55\n56\n57\n58\n59\n60\n61\n62\n63\n64\n65\n66\n67\n68\n69\n70\n71\n72\n73\n74\n75\n76\n77\n78\n79\n80\n81\n82\n83\n84\n85\n86\n87\n88\n89\n90\n9",
-                ),
                 working_dir: None,
                 tabs: tab::TabView::new(),
             },
@@ -53,7 +51,7 @@ impl App {
             }
             Message::Edit(action) => match action {
                 text_editor::Action::Scroll { .. } => (),
-                _ => self.text_content.perform(action),
+                _ => self.tabs.perform(action),
             },
             Message::SelectFile => {
                 let mut tab = tab::Tab::new();
@@ -63,9 +61,9 @@ impl App {
                 }
                 self.tabs.push(tab);
             }
-            Message::ChangeTab(tab_index) => {
-                self.tabs.change_tab(tab_index);
-            }
+            Message::ChangeTab(tab_index) => return self.tabs.change_tab(tab_index),
+            Message::TabScroll(id, x, y) => (self.tabs.set_offset(id, x, y)),
+            Message::TabSelected(tab) => self.tabs.select(tab),
         }
 
         Task::none()
