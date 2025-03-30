@@ -1,7 +1,7 @@
 use std::{fmt, fs, path::PathBuf, str::FromStr};
 
 use iced::{
-    Element, Task, Theme, highlighter,
+    Element, Length, Task, Theme, highlighter,
     widget::{Button, Column, Text, button, column, pick_list, row, scrollable, text_editor},
 };
 use rfd::FileDialog;
@@ -16,6 +16,7 @@ enum Message {
     Edit(text_editor::Action),
     OpenFileSelector,
     OpenDirectorySelector,
+    OpenFile(PathBuf),
     OpenProject(PathBuf),
     TabSelected(usize),
 }
@@ -58,10 +59,7 @@ impl App {
                 if let Some(file_path) =
                     select_file(&self.project_tree.current.as_ref().map(|p| p.path.clone()))
                 {
-                    let mut tab = tab::Tab::new();
-                    tab.open(&file_path);
-                    let idx = self.tabs.push(tab);
-                    self.tabs.select(idx);
+                    self.open_file(file_path)
                 }
             }
             Message::OpenDirectorySelector => {
@@ -73,6 +71,9 @@ impl App {
             }
             Message::TabSelected(tab) => self.tabs.select(tab),
             Message::OpenProject(project) => self.open_project(project),
+            Message::OpenFile(file_path) => {
+                self.open_file(file_path);
+            }
             _ => {
                 todo!()
             }
@@ -84,10 +85,7 @@ impl App {
     fn view(&self) -> Element<Message> {
         let cwd = PathBuf::from_str("/home").expect("could not get cwd");
 
-        let recent_projects = vec![Project {
-            name: "home".into(),
-            path: cwd,
-        }];
+        let recent_projects = vec![Project::new(cwd)];
         let nav_bar = row![
             pick_list(
                 recent_projects,
@@ -105,16 +103,22 @@ impl App {
             .project_tree
             .nodes
             .iter()
-            .map(|node| {
-                let name = match node {
-                    project::Node::File { name, .. } => name,
-                    project::Node::Directory { name, .. } => name,
-                };
-                button(Text::new(name)).into()
+            .map(|node| match node {
+                project::Node::File { name, path } => button(Text::new(name))
+                    .width(Length::Fill)
+                    .on_press(Message::OpenFile(path.to_owned()))
+                    .into(),
+                project::Node::Directory { name, .. } => {
+                    button(Text::new(name)).width(Length::Fill).into()
+                }
             })
             .collect();
 
-        column![nav_bar, row![Column::from_vec(file_tree), self.tabs.view()]].into()
+        column![
+            nav_bar,
+            row![Column::from_vec(file_tree).width(100.0), self.tabs.view()]
+        ]
+        .into()
     }
 
     fn theme(&self) -> Theme {
@@ -142,6 +146,13 @@ impl App {
             nodes.push(project::Node::new(entry_path));
         }
         self.project_tree.with_nodes(nodes);
+    }
+
+    fn open_file(&mut self, file_path: PathBuf) {
+        let mut tab = tab::Tab::new();
+        tab.open(&file_path);
+        let idx = self.tabs.push(tab);
+        self.tabs.select(idx);
     }
 }
 
