@@ -1,11 +1,12 @@
-use std::{fmt, path::PathBuf, str::FromStr};
+use std::{fmt, fs, path::PathBuf, str::FromStr};
 
 use iced::{
     Element, Task, Theme, highlighter,
-    widget::{button, column, pick_list, row, scrollable, text_editor},
+    widget::{Button, Column, Text, button, column, pick_list, row, scrollable, text_editor},
 };
 use rfd::FileDialog;
 
+mod project;
 mod tab;
 
 #[derive(Debug, Clone)]
@@ -15,7 +16,7 @@ enum Message {
     Edit(text_editor::Action),
     OpenFileSelector,
     OpenDirectorySelector,
-    SelectProject(Project),
+    OpenProject(PathBuf),
     TabSelected(usize),
 }
 
@@ -27,8 +28,8 @@ fn main() -> Result<(), iced::Error> {
 
 struct App {
     value: u64,
-    current_project: Option<Project>,
     tabs: tab::TabView,
+    project_tree: ProjectTree,
 }
 
 impl App {
@@ -36,8 +37,8 @@ impl App {
         (
             App {
                 value: 1,
-                current_project: None,
                 tabs: tab::TabView::new(),
+                project_tree: ProjectTree::new(),
             },
             Task::none(),
         )
@@ -55,7 +56,7 @@ impl App {
             },
             Message::OpenFileSelector => {
                 if let Some(file_path) =
-                    select_file(&self.current_project.as_ref().map(|p| p.dir_path.clone()))
+                    select_file(&self.project_tree.current.as_ref().map(|p| p.path.clone()))
                 {
                     let mut tab = tab::Tab::new();
                     tab.open(&file_path);
@@ -65,13 +66,13 @@ impl App {
             }
             Message::OpenDirectorySelector => {
                 if let Some(dir_path) =
-                    select_dir(&self.current_project.as_ref().map(|p| p.dir_path.clone()))
+                    select_dir(&self.project_tree.current.as_ref().map(|p| p.path.clone()))
                 {
-                    self.current_project = Some(Project::new(dir_path))
+                    self.open_project(dir_path);
                 }
             }
             Message::TabSelected(tab) => self.tabs.select(tab),
-            Message::SelectProject(project) => self.change_project(project),
+            Message::OpenProject(project) => self.open_project(project),
             _ => {
                 todo!()
             }
@@ -83,14 +84,15 @@ impl App {
     fn view(&self) -> Element<Message> {
         let cwd = PathBuf::from_str("/home").expect("could not get cwd");
 
-        let proj = Project::new(cwd);
-
-        let recent_projects = vec![proj];
+        let recent_projects = vec![Project {
+            name: "home".into(),
+            path: cwd,
+        }];
         let nav_bar = row![
             pick_list(
                 recent_projects,
-                self.current_project.clone(),
-                Message::SelectProject
+                self.project_tree.current.clone(),
+                |project: Project| Message::OpenProject(project.path),
             )
             .placeholder("Choose a Project"),
             button("Open File").on_press(Message::OpenFileSelector),
@@ -99,35 +101,85 @@ impl App {
                                                                         //     // run
         ];
 
-        column![nav_bar, self.tabs.view()].into()
+        let file_tree = self
+            .project_tree
+            .nodes
+            .iter()
+            .map(|node| {
+                let name = match node {
+                    project::Node::File { name, .. } => name,
+                    project::Node::Directory { name, .. } => name,
+                };
+                button(Text::new(name)).into()
+            })
+            .collect();
+
+        column![nav_bar, row![Column::from_vec(file_tree), self.tabs.view()]].into()
     }
 
     fn theme(&self) -> Theme {
         Theme::CatppuccinFrappe
     }
 
-    fn change_project(&mut self, project: Project) {
-        self.current_project = Some(project)
+    fn open_project(&mut self, dir_path: PathBuf) {
+        let read_dir = match fs::read_dir(&dir_path) {
+            Ok(ok) => ok,
+            Err(err) => {
+                log::error!("invalid directory {:?}: {}", dir_path, err);
+                return;
+            }
+        };
+        let mut nodes = Vec::new();
+        for dir_entry in read_dir {
+            let entry = match dir_entry {
+                Ok(ok) => ok,
+                Err(err) => {
+                    log::error!("invalid directory {:?}: {}", dir_path, err);
+                    return;
+                }
+            };
+            let entry_path = entry.path();
+            nodes.push(project::Node::new(entry_path));
+        }
+        self.project_tree.with_nodes(nodes);
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone)]
 struct Project {
     name: String,
-    dir_path: PathBuf,
+    path: PathBuf,
 }
 
 impl Project {
-    fn new(dir_path: PathBuf) -> Self {
-        let name = dir_path
+    fn new(path: PathBuf) -> Self {
+        let name = path
             .file_name()
             .expect("invalid dir name")
             .to_str()
             .expect("invalid dir name string");
         Self {
             name: name.to_string(),
-            dir_path: dir_path,
+            path: path,
         }
+    }
+}
+
+pub struct ProjectTree {
+    current: Option<Project>,
+    nodes: Vec<project::Node>,
+}
+
+impl ProjectTree {
+    fn new() -> Self {
+        Self {
+            current: None,
+            nodes: Vec::new(),
+        }
+    }
+    fn with_nodes(&mut self, nodes: Vec<project::Node>) -> &mut Self {
+        self.nodes = nodes;
+        self
     }
 }
 
