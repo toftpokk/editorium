@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf, str::FromStr};
 
 use iced::{
     Element, Task, Theme, highlighter,
-    widget::{button, column, row, text_editor},
+    widget::{button, column, pick_list, row, text, text_editor},
 };
 use rfd::FileDialog;
 
@@ -15,6 +15,7 @@ enum Message {
     Edit(text_editor::Action),
     SelectFile,
     ChangeTab(usize),
+    SelectProject(Project),
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -26,7 +27,7 @@ fn main() -> Result<(), iced::Error> {
 struct App {
     value: u64,
     text_content: text_editor::Content,
-    working_dir: Option<PathBuf>,
+    current_project: Option<Project>,
     tabs: tab::TabView,
 }
 
@@ -38,7 +39,7 @@ impl App {
                 text_content: text_editor::Content::with_text(
                     "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40\n41\n42\n43\n44\n45\n46\n47\n48\n49\n50\n51\n52\n53\n54\n55\n56\n57\n58\n59\n60\n61\n62\n63\n64\n65\n66\n67\n68\n69\n70\n71\n72\n73\n74\n75\n76\n77\n78\n79\n80\n81\n82\n83\n84\n85\n86\n87\n88\n89\n90\n9",
                 ),
-                working_dir: None,
+                current_project: None,
                 tabs: tab::TabView::new(),
             },
             Task::none(),
@@ -58,7 +59,9 @@ impl App {
             Message::SelectFile => {
                 let mut tab = tab::Tab::new();
 
-                if let Some(file_path) = select_file(&self.working_dir) {
+                if let Some(file_path) =
+                    select_file(&self.current_project.as_ref().map(|p| p.file_path.clone()))
+                {
                     tab.open(&file_path);
                 }
                 self.tabs.push(tab);
@@ -66,14 +69,25 @@ impl App {
             Message::ChangeTab(tab_index) => {
                 self.tabs.change_tab(tab_index);
             }
+            Message::SelectProject(project) => self.current_project = Some(project),
         }
 
         Task::none()
     }
 
     fn view(&self) -> Element<Message> {
-        // let file_selection = row![]
+        let cwd = PathBuf::from_str("/").expect("could not get cwd");
+
+        let proj = Project::new("a".into(), cwd);
+
+        let recent_projects = vec![proj];
         let nav_bar = row![
+            pick_list(
+                recent_projects,
+                self.current_project.clone(),
+                Message::SelectProject
+            )
+            .placeholder("Choose a Project"),
             button("Open File").on_press(Message::SelectFile) //     // current_project
                                                               //     // current git branch
                                                               //     // run
@@ -89,6 +103,27 @@ impl App {
 
     fn theme(&self) -> Theme {
         Theme::CatppuccinFrappe
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+struct Project {
+    name: String,
+    file_path: PathBuf,
+}
+
+impl Project {
+    fn new(name: String, file_path: PathBuf) -> Self {
+        Self {
+            name: name,
+            file_path: file_path,
+        }
+    }
+}
+
+impl fmt::Display for Project {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
     }
 }
 
