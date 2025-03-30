@@ -149,6 +149,17 @@ impl App {
     }
 
     fn open_file(&mut self, file_path: PathBuf) {
+        let duplicate_idx = self.tabs.tabs().iter().position(|tab| {
+            if let Some(path) = tab.file_path.clone() {
+                path == file_path
+            } else {
+                false
+            }
+        });
+        if let Some(idx) = duplicate_idx {
+            self.tabs.select(idx);
+            return;
+        }
         let mut tab = tab::Tab::new();
         tab.open(&file_path);
         let idx = self.tabs.push(tab);

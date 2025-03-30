@@ -21,6 +21,10 @@ impl TabView {
         }
     }
 
+    pub fn tabs(&self) -> &Vec<Tab> {
+        &self.tabs
+    }
+
     pub fn push(&mut self, tab: Tab) -> usize {
         self.tabs.push(tab);
         self.tabs.len() - 1
@@ -60,8 +64,8 @@ impl TabView {
 }
 
 pub struct Tab {
-    name: String,
-    file_path: Option<path::PathBuf>,
+    pub name: String,
+    pub file_path: Option<path::PathBuf>,
     content: text_editor::Content,
 }
 
