@@ -1,96 +1,66 @@
 use std::{ffi, fs, path};
 
-use iced::widget::{Row, button, column, container, row, scrollable, text, text_editor};
-use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter};
+use iced::widget::{
+    Column, Row, Scrollable, button, column, container, row, scrollable, text, text_editor,
+};
+use iced::{Alignment, Element, Font, Length, Padding, Pixels, Task, highlighter};
+use iced_aw::TabBar;
 
 use crate::Message;
 
 pub struct TabView {
-    current_tab: Option<usize>,
+    active_tab: usize,
     tabs: Vec<Tab>,
 }
 
 impl TabView {
     pub fn new() -> Self {
         Self {
-            current_tab: None,
+            active_tab: usize::default(),
             tabs: Vec::new(),
         }
     }
 
-    pub fn push(&mut self, tab: Tab) {
+    pub fn push(&mut self, tab: Tab) -> usize {
         self.tabs.push(tab);
-        self.current_tab = Some(self.tabs.len() - 1);
+        self.tabs.len() - 1
     }
 
-    pub fn change_tab(&mut self, tab_index: usize) {
-        if tab_index < self.tabs.len() {
-            self.current_tab = Some(tab_index);
-        }
+    pub fn select(&mut self, selected: usize) {
+        self.active_tab = selected
     }
 
     pub fn view(&self) -> Element<Message> {
-        let font_size = 15.0;
-        let line_height = 1.1;
-        let syntax_theme = highlighter::Theme::SolarizedDark;
-
-        let main = if let Some(tab_index) = self.current_tab {
-            let tab = &self.tabs[tab_index];
-            row![
-                line_number(tab.content.line_count(), font_size, line_height,),
-                text_editor(&tab.content)
-                    .font(Font::MONOSPACE)
-                    .size(font_size)
-                    .line_height(line_height)
-                    .padding(Padding {
-                        top: 0.0,
-                        bottom: 0.0,
-                        left: 5.0,
-                        right: 0.0,
-                    })
-                    .highlight(
-                        tab.file_path
-                            .as_deref()
-                            .and_then(path::Path::extension)
-                            .and_then(ffi::OsStr::to_str)
-                            .unwrap_or(""),
-                        syntax_theme,
-                    )
-                    .on_action(Message::Edit)
-            ]
+        let main = if let Some(tab) = self.tabs.get(self.active_tab) {
+            tab.view()
         } else {
-            Row::new()
+            scrollable(Row::new())
         };
 
-        let tab_list = self
-            .tabs
-            .iter()
-            .enumerate()
-            .fold(Row::new(), |row, (index, tab)| {
-                let file_name = if let Some(path) = &tab.file_path {
-                    path.file_name()
-                        .expect("invalid file")
-                        .to_str()
-                        .expect("invalid file string")
-                } else {
-                    ""
-                };
-                row.push(button(file_name).on_press(Message::ChangeTab(index)))
-            });
+        Column::new()
+            .push(
+                self.tabs
+                    .iter()
+                    .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
+                        let idx = tab_bar.size();
+                        tab_bar.push(idx, iced_aw::TabLabel::Text(tab.name.to_owned()))
+                    })
+                    .tab_width(Length::Shrink)
+                    .set_active_tab(&self.active_tab),
+            )
+            .push(main)
+            .into()
+    }
 
-        column![
-            tab_list,
-            scrollable(main)
-                .height(Length::Fill)
-                .direction(scrollable::Direction::Vertical(
-                    scrollable::Scrollbar::default().scroller_width(0).width(0),
-                )),
-        ]
-        .into()
+    pub fn perform(&mut self, action: text_editor::Action) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.content.perform(action)
+        }
     }
 }
 
 pub struct Tab {
+    name: String,
     file_path: Option<path::PathBuf>,
     content: text_editor::Content,
 }
@@ -98,6 +68,7 @@ pub struct Tab {
 impl Tab {
     pub fn new() -> Self {
         Self {
+            name: "New Tab".to_owned(),
             file_path: None,
             content: text_editor::Content::new(),
         }
@@ -113,13 +84,52 @@ impl Tab {
         };
         match fs::read_to_string(&file_path) {
             Ok(content) => {
+                self.content = text_editor::Content::with_text(&content);
+                self.name = file_path
+                    .file_name()
+                    .expect("invalid file")
+                    .to_str()
+                    .expect("invalid file name")
+                    .to_owned();
                 self.file_path = Some(file_path);
-                self.content = text_editor::Content::with_text(&content)
             }
             Err(err) => {
                 log::error!("Could not load file {:?}: {}", file_path, err)
             }
         }
+    }
+
+    pub fn view(&self) -> Scrollable<Message> {
+        let font_size = 15.0;
+        let line_height = 1.1;
+        let syntax_theme = highlighter::Theme::SolarizedDark;
+
+        Scrollable::new(row![
+            line_number(self.content.line_count(), font_size, line_height,),
+            text_editor(&self.content)
+                .font(Font::MONOSPACE)
+                .size(font_size)
+                .line_height(line_height)
+                .padding(Padding {
+                    top: 0.0,
+                    bottom: 0.0,
+                    left: 5.0,
+                    right: 0.0,
+                })
+                .highlight(
+                    self.file_path
+                        .as_deref()
+                        .and_then(path::Path::extension)
+                        .and_then(ffi::OsStr::to_str)
+                        .unwrap_or(""),
+                    syntax_theme,
+                )
+                .on_action(Message::Edit)
+        ])
+        .height(Length::Fill)
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::default().scroller_width(0).width(0),
+        ))
     }
 }
 
