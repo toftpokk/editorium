@@ -22,6 +22,7 @@ enum Message {
 }
 
 fn main() -> Result<(), iced::Error> {
+    env_logger::init();
     iced::application("Editorium", App::update, App::view)
         .theme(App::theme)
         .run_with(App::new)
