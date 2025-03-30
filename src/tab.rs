@@ -56,9 +56,11 @@ impl TabView {
             .into()
     }
 
-    pub fn perform(&mut self, action: text_editor::Action) {
+    pub fn get_current(&mut self) -> Option<&mut Tab> {
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-            tab.content.perform(action)
+            Some(tab)
+        } else {
+            None
         }
     }
 }
@@ -66,7 +68,7 @@ impl TabView {
 pub struct Tab {
     pub name: String,
     pub file_path: Option<path::PathBuf>,
-    content: text_editor::Content,
+    pub content: text_editor::Content,
 }
 
 impl Tab {
@@ -99,6 +101,17 @@ impl Tab {
             }
             Err(err) => {
                 log::error!("Could not load file {:?}: {}", file_path, err)
+            }
+        }
+    }
+
+    pub fn save(&self) {
+        if let Some(path) = &self.file_path {
+            match fs::write(path, self.content.text()) {
+                Ok(()) => {}
+                Err(err) => {
+                    log::error!("{}", err)
+                }
             }
         }
     }

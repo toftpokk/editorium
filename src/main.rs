@@ -1,7 +1,10 @@
 use std::{fmt, fs, path::PathBuf, str::FromStr};
 
 use iced::{
-    Element, Length, Task, Theme, highlighter,
+    Element, Length, Subscription, Task, Theme,
+    advanced::graphics::{core::keyboard, text::cosmic_text::ttf_parser::kern},
+    event, highlighter,
+    keyboard::{Modifiers, key},
     widget::{Button, Column, Text, button, column, pick_list, row, scrollable, text_editor},
 };
 use rfd::FileDialog;
@@ -11,6 +14,7 @@ mod tab;
 
 #[derive(Debug, Clone)]
 enum Message {
+    KeyPressed(keyboard::Modifiers, keyboard::Key),
     ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
     OpenFileSelector,
@@ -18,11 +22,13 @@ enum Message {
     OpenFile(PathBuf),
     OpenProject(PathBuf),
     TabSelected(usize),
+    SaveFile,
 }
 
 fn main() -> Result<(), iced::Error> {
     env_logger::init();
     iced::application("Editorium", App::update, App::view)
+        .subscription(App::subscription)
         .theme(App::theme)
         .run_with(App::new)
 }
@@ -48,7 +54,11 @@ impl App {
             }
             Message::Edit(action) => match action {
                 text_editor::Action::Scroll { .. } => (),
-                _ => self.tabs.perform(action),
+                _ => {
+                    if let Some(t) = self.tabs.get_current() {
+                        t.content.perform(action);
+                    }
+                }
             },
             Message::OpenFileSelector => {
                 if let Some(file_path) =
@@ -67,6 +77,16 @@ impl App {
             Message::TabSelected(tab) => self.tabs.select(tab),
             Message::OpenProject(project) => self.open_project(project),
             Message::OpenFile(file_path) => self.open_file(file_path),
+            Message::SaveFile => {
+                if let Some(t) = self.tabs.get_current() {
+                    t.save()
+                }
+            }
+            Message::KeyPressed(modifier, key) => {
+                if modifier == Modifiers::CTRL && key == keyboard::Key::Character("s".into()) {
+                    return self.update(Message::SaveFile);
+                }
+            }
             _ => {
                 todo!()
             }
@@ -112,6 +132,19 @@ impl App {
             row![Column::from_vec(file_tree).width(100.0), self.tabs.view()]
         ]
         .into()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        let subscriptions = vec![event::listen_with(|event, status, window_id| match event {
+            event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
+                match status {
+                    event::Status::Captured => None,
+                    event::Status::Ignored => Some(Message::KeyPressed(modifiers, key)),
+                }
+            }
+            _ => None,
+        })];
+        Subscription::batch(subscriptions)
     }
 
     fn theme(&self) -> Theme {
