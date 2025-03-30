@@ -11,7 +11,6 @@ mod tab;
 
 #[derive(Debug, Clone)]
 enum Message {
-    Increment,
     ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
     OpenFileSelector,
@@ -29,26 +28,21 @@ fn main() -> Result<(), iced::Error> {
 }
 
 struct App {
-    value: u64,
     tabs: tab::TabView,
     project_tree: ProjectTree,
 }
 
 impl App {
-    fn new() -> (App, Task<Message>) {
-        (
-            App {
-                value: 1,
-                tabs: tab::TabView::new(),
-                project_tree: ProjectTree::new(),
-            },
-            Task::none(),
-        )
+    fn new() -> (Self, Task<Message>) {
+        let mut app = Self {
+            tabs: tab::TabView::new(),
+            project_tree: ProjectTree::new(),
+        };
+        (app, Task::none())
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Increment => self.value += 1,
             Message::ThemeSelected(theme) => {
                 println!("{}", theme)
             }
@@ -67,14 +61,12 @@ impl App {
                 if let Some(dir_path) =
                     select_dir(&self.project_tree.current.as_ref().map(|p| p.path.clone()))
                 {
-                    self.open_project(dir_path);
+                    self.open_project(dir_path)
                 }
             }
             Message::TabSelected(tab) => self.tabs.select(tab),
             Message::OpenProject(project) => self.open_project(project),
-            Message::OpenFile(file_path) => {
-                self.open_file(file_path);
-            }
+            Message::OpenFile(file_path) => self.open_file(file_path),
             _ => {
                 todo!()
             }
