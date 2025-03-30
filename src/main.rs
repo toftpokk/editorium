@@ -53,15 +53,14 @@ impl App {
                 _ => self.tabs.perform(action),
             },
             Message::OpenFileSelector => {
-                let mut tab = tab::Tab::new();
-
                 if let Some(file_path) =
                     select_file(&self.current_project.as_ref().map(|p| p.file_path.clone()))
                 {
+                    let mut tab = tab::Tab::new();
                     tab.open(&file_path);
+                    let idx = self.tabs.push(tab);
+                    self.tabs.select(idx);
                 }
-                let idx = self.tabs.push(tab);
-                self.tabs.select(idx);
             }
             Message::TabSelected(tab) => self.tabs.select(tab),
             Message::SelectProject(project) => self.change_project(project),
