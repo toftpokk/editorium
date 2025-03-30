@@ -13,7 +13,7 @@ enum Message {
     Increment,
     ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
-    SelectFile,
+    OpenFileSelector,
     ChangeTab(usize),
     SelectProject(Project),
 }
@@ -56,7 +56,7 @@ impl App {
                 text_editor::Action::Scroll { .. } => (),
                 _ => self.text_content.perform(action),
             },
-            Message::SelectFile => {
+            Message::OpenFileSelector => {
                 let mut tab = tab::Tab::new();
 
                 if let Some(file_path) =
@@ -69,7 +69,7 @@ impl App {
             Message::ChangeTab(tab_index) => {
                 self.tabs.change_tab(tab_index);
             }
-            Message::SelectProject(project) => self.current_project = Some(project),
+            Message::SelectProject(project) => self.change_project(project),
         }
 
         Task::none()
@@ -88,21 +88,20 @@ impl App {
                 Message::SelectProject
             )
             .placeholder("Choose a Project"),
-            button("Open File").on_press(Message::SelectFile) //     // current_project
-                                                              //     // current git branch
-                                                              //     // run
+            button("Open File").on_press(Message::OpenFileSelector) //     // current_project
+                                                                    //     // current git branch
+                                                                    //     // run
         ];
-        // column![
-        // container().width(Length::Fill)
-        // nav_bar
-        // pick_list(highlighter::Theme::ALL, Some(highlighter::Theme::SolarizedDark), Message::ThemeSelected)
-        // ].into()
 
         column![nav_bar, self.tabs.view()].into()
     }
 
     fn theme(&self) -> Theme {
         Theme::CatppuccinFrappe
+    }
+
+    fn change_project(&mut self, project: Project) {
+        self.current_project = Some(project)
     }
 }
 
