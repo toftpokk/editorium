@@ -14,6 +14,7 @@ enum Message {
     ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
     OpenFileSelector,
+    OpenDirectorySelector,
     SelectProject(Project),
     TabSelected(usize),
 }
@@ -54,12 +55,19 @@ impl App {
             },
             Message::OpenFileSelector => {
                 if let Some(file_path) =
-                    select_file(&self.current_project.as_ref().map(|p| p.file_path.clone()))
+                    select_file(&self.current_project.as_ref().map(|p| p.dir_path.clone()))
                 {
                     let mut tab = tab::Tab::new();
                     tab.open(&file_path);
                     let idx = self.tabs.push(tab);
                     self.tabs.select(idx);
+                }
+            }
+            Message::OpenDirectorySelector => {
+                if let Some(dir_path) =
+                    select_dir(&self.current_project.as_ref().map(|p| p.dir_path.clone()))
+                {
+                    self.current_project = Some(Project::new(dir_path))
                 }
             }
             Message::TabSelected(tab) => self.tabs.select(tab),
@@ -73,9 +81,9 @@ impl App {
     }
 
     fn view(&self) -> Element<Message> {
-        let cwd = PathBuf::from_str("/").expect("could not get cwd");
+        let cwd = PathBuf::from_str("/home").expect("could not get cwd");
 
-        let proj = Project::new("a".into(), cwd);
+        let proj = Project::new(cwd);
 
         let recent_projects = vec![proj];
         let nav_bar = row![
@@ -85,9 +93,10 @@ impl App {
                 Message::SelectProject
             )
             .placeholder("Choose a Project"),
-            button("Open File").on_press(Message::OpenFileSelector) //     // current_project
-                                                                    //     // current git branch
-                                                                    //     // run
+            button("Open File").on_press(Message::OpenFileSelector),
+            button("Open Dir").on_press(Message::OpenDirectorySelector) //     // current_project
+                                                                        //     // current git branch
+                                                                        //     // run
         ];
 
         column![nav_bar, self.tabs.view()].into()
@@ -105,14 +114,19 @@ impl App {
 #[derive(PartialEq, Clone, Debug)]
 struct Project {
     name: String,
-    file_path: PathBuf,
+    dir_path: PathBuf,
 }
 
 impl Project {
-    fn new(name: String, file_path: PathBuf) -> Self {
+    fn new(dir_path: PathBuf) -> Self {
+        let name = dir_path
+            .file_name()
+            .expect("invalid dir name")
+            .to_str()
+            .expect("invalid dir name string");
         Self {
-            name: name,
-            file_path: file_path,
+            name: name.to_string(),
+            dir_path: dir_path,
         }
     }
 }
@@ -121,6 +135,19 @@ impl fmt::Display for Project {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.name)
     }
+}
+
+fn select_dir(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
+    let mut dialog = FileDialog::new().set_title("Open a directory...");
+
+    if let Some(working_dir) = working_dir {
+        dialog = dialog.set_directory(working_dir)
+    }
+
+    if let Some(dir) = dialog.pick_folder() {
+        return Some(dir);
+    }
+    return None;
 }
 
 fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
