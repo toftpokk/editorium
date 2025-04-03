@@ -183,7 +183,8 @@ impl App {
             let entry_path = entry.path();
             nodes.push(project::Node::new(entry_path));
         }
-        self.project_tree.with_nodes(nodes);
+
+        self.project_tree.with_project(nodes, dir_path);
     }
 
     fn open_file(&mut self, file_path: PathBuf) {
@@ -238,8 +239,9 @@ impl ProjectTree {
             nodes: Vec::new(),
         }
     }
-    fn with_nodes(&mut self, nodes: Vec<project::Node>) -> &mut Self {
+    fn with_project(&mut self, nodes: Vec<project::Node>, path: PathBuf) -> &mut Self {
         self.nodes = nodes;
+        self.current = Some(Project::new(path));
         self
     }
 }
