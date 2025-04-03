@@ -26,7 +26,7 @@ pub fn default() -> HashMap<KeyBind, Message> {
             modifiers: Modifiers::CTRL,
             key: Key::Character("w".into()),
         },
-        Message::TabClose,
+        Message::TabCloseCurrent,
     );
 
     key_bind

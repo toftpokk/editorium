@@ -7,6 +7,7 @@ use iced::{
     keyboard::{Modifiers, key},
     widget::{Button, Column, Text, button, column, pick_list, row, scrollable, text_editor},
 };
+use iced_aw::iced_fonts;
 use rfd::FileDialog;
 
 mod key_binds;
@@ -23,7 +24,8 @@ enum Message {
     OpenFile(PathBuf),
     OpenProject(PathBuf),
     TabSelected(usize),
-    TabClose,
+    TabClose(usize),
+    TabCloseCurrent,
     SaveFile,
 }
 
@@ -32,6 +34,7 @@ fn main() -> Result<(), iced::Error> {
     iced::application("Editorium", App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
+        .font(iced_fonts::REQUIRED_FONT_BYTES)
         .run_with(App::new)
 }
 
@@ -86,6 +89,8 @@ impl App {
                     t.save()
                 }
             }
+            Message::TabCloseCurrent => self.tabs.close(self.tabs.get_active_pos()),
+            Message::TabClose(tab) => self.tabs.close(tab),
             Message::KeyPressed(modifier, key) => {
                 if let Some(value) = self.key_binds.get(&key_binds::KeyBind {
                     modifiers: modifier,
@@ -94,7 +99,6 @@ impl App {
                     return self.update(value.clone());
                 }
             }
-            Message::TabClose => self.tabs.close(self.tabs.get_active_pos()),
             _ => {
                 todo!()
             }

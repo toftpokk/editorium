@@ -56,6 +56,7 @@ impl TabView {
                         let idx = tab_bar.size();
                         tab_bar.push(idx, iced_aw::TabLabel::Text(tab.name.to_owned()))
                     })
+                    .on_close(Message::TabClose)
                     .tab_width(Length::Shrink)
                     .set_active_tab(&self.active_pos),
             )
