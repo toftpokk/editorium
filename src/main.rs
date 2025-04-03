@@ -1,11 +1,13 @@
 use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
 
 use iced::{
-    Element, Length, Subscription, Task, Theme,
+    Color, Element, Length, Subscription, Task, Theme,
     advanced::graphics::{core::keyboard, text::cosmic_text::ttf_parser::kern},
     event, highlighter,
     keyboard::{Modifiers, key},
-    widget::{Button, Column, Text, button, column, pick_list, row, scrollable, text_editor},
+    widget::{
+        Button, Column, Text, button, column, container, pick_list, row, scrollable, text_editor,
+    },
 };
 use iced_aw::iced_fonts;
 use rfd::FileDialog;
@@ -36,6 +38,44 @@ fn main() -> Result<(), iced::Error> {
         .theme(App::theme)
         .font(iced_fonts::REQUIRED_FONT_BYTES)
         .run_with(App::new)
+}
+
+fn containerStyle(_theme: &Theme) -> container::Style
+where
+    Theme: container::Catalog,
+{
+    container::Style {
+        background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
+        ..Default::default()
+    }
+}
+
+fn buttonStyle(_theme: &Theme, status: button::Status) -> button::Style
+where
+    Theme: button::Catalog,
+{
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
+            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
+            ..Default::default()
+        },
+        button::Status::Disabled => button::Style {
+            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
+            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
+            ..Default::default()
+        },
+        button::Status::Hovered => button::Style {
+            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
+            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
+            ..Default::default()
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(iced::Background::Color(Color::from_rgb8(0x2D, 0x43, 0x6E))),
+            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
+            ..Default::default()
+        },
+    }
 }
 
 struct App {
@@ -132,16 +172,26 @@ impl App {
                 project::Node::File { name, path } => button(Text::new(name))
                     .width(Length::Fill)
                     .on_press(Message::OpenFile(path.to_owned()))
+                    .style(buttonStyle)
                     .into(),
-                project::Node::Directory { name, .. } => {
-                    button(Text::new(name)).width(Length::Fill).into()
-                }
+                project::Node::Directory { name, .. } => button(Text::new(name))
+                    .width(Length::Fill)
+                    .style(buttonStyle)
+                    .into(),
             })
             .collect();
 
         column![
             nav_bar,
-            row![Column::from_vec(file_tree).width(100.0), self.tabs.view()]
+            row![
+                container(
+                    Column::from_vec(file_tree)
+                        .width(100.0)
+                        .height(Length::Fill)
+                )
+                .style(containerStyle),
+                self.tabs.view(),
+            ]
         ]
         .into()
     }
