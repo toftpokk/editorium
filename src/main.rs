@@ -2,11 +2,15 @@ use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
 
 use iced::{
     Color, Element, Length, Subscription, Task, Theme,
-    advanced::graphics::{core::keyboard, text::cosmic_text::ttf_parser::kern},
+    advanced::graphics::{
+        core::{Element, keyboard},
+        text::cosmic_text::ttf_parser::kern,
+    },
     event, highlighter,
     keyboard::{Modifiers, key},
     widget::{
-        Button, Column, Text, button, column, container, pick_list, row, scrollable, text_editor,
+        Button, Column, PaneGrid, Text, button, column, container, pane_grid, pick_list, row,
+        scrollable, text, text_editor,
     },
 };
 use iced_aw::iced_fonts;
@@ -28,7 +32,9 @@ enum Message {
     TabSelected(usize),
     TabClose(usize),
     TabCloseCurrent,
+    PaneResized(pane_grid::ResizeEvent),
     SaveFile,
+    Todo,
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -78,10 +84,43 @@ where
     }
 }
 
+struct Pane {
+    id: usize,
+    pane_type: PaneType,
+}
+
+#[derive(PartialEq)]
+enum PaneType {
+    FileTree,
+    Editor,
+}
+
+impl Pane {
+    fn new(pane_type: PaneType) -> Self {
+        Self {
+            id: 0,
+            pane_type: pane_type,
+        }
+    }
+}
+
 struct App {
     tabs: tab::TabView,
     project_tree: ProjectTree,
     key_binds: HashMap<key_binds::KeyBind, Message>,
+    panes: pane_grid::State<Pane>,
+}
+
+fn create_pane() -> pane_grid::State<Pane> {
+    let (mut state, pane) = pane_grid::State::new(Pane::new(PaneType::FileTree));
+
+    let (_, split) = state
+        .split(pane_grid::Axis::Vertical, pane, Pane::new(PaneType::Editor))
+        .unwrap();
+
+    state.resize(split, 0.2);
+
+    state
 }
 
 impl App {
@@ -90,6 +129,7 @@ impl App {
             tabs: tab::TabView::new(),
             project_tree: ProjectTree::new(),
             key_binds: key_binds::default(),
+            panes: create_pane(),
         };
         (app, Task::none())
     }
@@ -139,6 +179,9 @@ impl App {
                     return self.update(value.clone());
                 }
             }
+            Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
+                self.panes.resize(split, ratio);
+            }
             _ => {
                 todo!()
             }
@@ -164,7 +207,7 @@ impl App {
                                                                         //     // run
         ];
 
-        let file_tree = self
+        let file_tree: Vec<Element<Message>> = self
             .project_tree
             .nodes
             .iter()
@@ -180,18 +223,31 @@ impl App {
                     .into(),
             })
             .collect();
+        let tree: Element<Message> = Column::from_vec(file_tree).into();
+
+        let pane_grid = PaneGrid::new(&self.panes, |pane, state, is_maximized| {
+            if state.pane_type == PaneType::Editor {
+                pane_grid::Content::new(text("editor"))
+            } else {
+                pane_grid::Content::new(tree)
+            }
+        })
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .on_resize(10, Message::PaneResized);
 
         column![
             nav_bar,
-            row![
-                container(
-                    Column::from_vec(file_tree)
-                        .width(100.0)
-                        .height(Length::Fill)
-                )
-                .style(containerStyle),
-                self.tabs.view(),
-            ]
+            pane_grid //     row![
+                      //         container(
+                      //             Column::from_vec(file_tree)
+                      //                 .width(100.0)
+                      //                 .height(Length::Fill)
+                      //         )
+                      //         .style(containerStyle),
+                      //         self.tabs.view(),
+                      //     ]
         ]
         .into()
     }
