@@ -3,10 +3,10 @@ use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
 use iced::{
     Color, Element, Length, Subscription, Task, Theme,
     advanced::graphics::core::keyboard,
-    event, highlighter,
+    event,
     widget::{
-        Container, PaneGrid, button, column, container, pane_grid, pick_list, row, scrollable,
-        text, text_editor,
+        Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable, text,
+        text_editor,
     },
 };
 use iced_aw::iced_fonts;
@@ -19,7 +19,6 @@ mod tab;
 #[derive(Debug, Clone)]
 enum Message {
     KeyPressed(keyboard::Modifiers, keyboard::Key),
-    ThemeSelected(highlighter::Theme),
     Edit(text_editor::Action),
     OpenFileSelector,
     OpenDirectorySelector,
@@ -30,7 +29,6 @@ enum Message {
     TabCloseCurrent,
     PaneResized(pane_grid::ResizeEvent),
     SaveFile,
-    Todo,
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -42,17 +40,7 @@ fn main() -> Result<(), iced::Error> {
         .run_with(App::new)
 }
 
-fn containerStyle(_theme: &Theme) -> container::Style
-where
-    Theme: container::Catalog,
-{
-    container::Style {
-        background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-        ..Default::default()
-    }
-}
-
-fn buttonStyle(_theme: &Theme, status: button::Status) -> button::Style
+fn button_style(_theme: &Theme, status: button::Status) -> button::Style
 where
     Theme: button::Catalog,
 {
@@ -81,7 +69,6 @@ where
 }
 
 struct Pane {
-    id: usize,
     pane_type: PaneType,
 }
 
@@ -94,7 +81,6 @@ enum PaneType {
 impl Pane {
     fn new(pane_type: PaneType) -> Self {
         Self {
-            id: 0,
             pane_type: pane_type,
         }
     }
@@ -110,7 +96,7 @@ struct App {
 fn create_pane() -> pane_grid::State<Pane> {
     let (mut pane_grid_state, pane) = pane_grid::State::new(Pane::new(PaneType::FileTree));
 
-    let (new_pane, split) = pane_grid_state
+    let (_, split) = pane_grid_state
         .split(pane_grid::Axis::Vertical, pane, Pane::new(PaneType::Editor))
         .unwrap();
 
@@ -121,20 +107,19 @@ fn create_pane() -> pane_grid::State<Pane> {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let mut app = Self {
-            tabs: tab::TabView::new(),
-            project_tree: ProjectTree::new(),
-            key_binds: key_binds::default(),
-            panes: create_pane(),
-        };
-        (app, Task::none())
+        (
+            Self {
+                tabs: tab::TabView::new(),
+                project_tree: ProjectTree::new(),
+                key_binds: key_binds::default(),
+                panes: create_pane(),
+            },
+            Task::none(),
+        )
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::ThemeSelected(theme) => {
-                println!("{}", theme)
-            }
             Message::Edit(action) => match action {
                 text_editor::Action::Scroll { .. } => (),
                 _ => {
@@ -203,7 +188,7 @@ impl App {
                                                                         //     // run
         ];
 
-        let pane_grid = PaneGrid::new(&self.panes, |pane, state, is_maximized| {
+        let pane_grid = PaneGrid::new(&self.panes, |_, state, _| {
             if state.pane_type == PaneType::Editor {
                 pane_grid::Content::new(self.tabs.view())
             } else {
@@ -215,11 +200,12 @@ impl App {
                         project::Node::File { name, path } => button(text(name))
                             .width(Length::Fill)
                             .on_press(Message::OpenFile(path.to_owned()))
-                            .style(buttonStyle)
+                            .style(button_style)
                             .into(),
-                        project::Node::Directory { name, .. } => button(text(name))
+                        project::Node::Directory { name, path } => button(text(name))
+                            .on_press(Message::OpenFile(path.to_owned()))
                             .width(Length::Fill)
-                            .style(buttonStyle)
+                            .style(button_style)
                             .into(),
                     })
                     .collect();
@@ -240,8 +226,8 @@ impl App {
                                 }),
                                 button("helaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaalo")
                                     .width(Length::Fill)
-                                    .style(buttonStyle),
-                                button("hello").width(Length::Fill).style(buttonStyle),
+                                    .style(button_style),
+                                button("hello").width(Length::Fill).style(button_style),
                             ]
                             .extend(file_tree),
                         )
@@ -270,7 +256,7 @@ impl App {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        let subscriptions = vec![event::listen_with(|event, status, window_id| match event {
+        let subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
                 match status {
                     event::Status::Captured => None,

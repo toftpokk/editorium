@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::{ffi, fs, path};
 
 use iced::widget::{
-    Column, Row, Scrollable, button, column, container, row, scrollable, text, text_editor,
+    Column, Row, Scrollable, column, container, row, scrollable, text, text_editor,
 };
-use iced::{Alignment, Element, Font, Length, Padding, Pixels, Task, highlighter};
+use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter};
 use iced_aw::TabBar;
 
 use crate::Message;
