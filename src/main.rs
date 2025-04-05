@@ -2,15 +2,11 @@ use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
 
 use iced::{
     Color, Element, Length, Subscription, Task, Theme,
-    advanced::graphics::{
-        core::{Element, keyboard},
-        text::cosmic_text::ttf_parser::kern,
-    },
+    advanced::graphics::core::keyboard,
     event, highlighter,
-    keyboard::{Modifiers, key},
     widget::{
-        Button, Column, PaneGrid, Text, button, column, container, pane_grid, pick_list, row,
-        scrollable, text, text_editor,
+        Container, PaneGrid, button, column, container, pane_grid, pick_list, row, scrollable,
+        text, text_editor,
     },
 };
 use iced_aw::iced_fonts;
@@ -112,15 +108,15 @@ struct App {
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
-    let (mut state, pane) = pane_grid::State::new(Pane::new(PaneType::FileTree));
+    let (mut pane_grid_state, pane) = pane_grid::State::new(Pane::new(PaneType::FileTree));
 
-    let (_, split) = state
+    let (new_pane, split) = pane_grid_state
         .split(pane_grid::Axis::Vertical, pane, Pane::new(PaneType::Editor))
         .unwrap();
 
-    state.resize(split, 0.2);
+    pane_grid_state.resize(split, 0.2);
 
-    state
+    pane_grid_state
 }
 
 impl App {
@@ -207,29 +203,59 @@ impl App {
                                                                         //     // run
         ];
 
-        let file_tree: Vec<Element<Message>> = self
-            .project_tree
-            .nodes
-            .iter()
-            .map(|node| match node {
-                project::Node::File { name, path } => button(Text::new(name))
-                    .width(Length::Fill)
-                    .on_press(Message::OpenFile(path.to_owned()))
-                    .style(buttonStyle)
-                    .into(),
-                project::Node::Directory { name, .. } => button(Text::new(name))
-                    .width(Length::Fill)
-                    .style(buttonStyle)
-                    .into(),
-            })
-            .collect();
-        let tree: Element<Message> = Column::from_vec(file_tree).into();
-
         let pane_grid = PaneGrid::new(&self.panes, |pane, state, is_maximized| {
             if state.pane_type == PaneType::Editor {
-                pane_grid::Content::new(text("editor"))
+                pane_grid::Content::new(self.tabs.view())
             } else {
-                pane_grid::Content::new(tree)
+                let file_tree: Vec<Element<Message>> = self
+                    .project_tree
+                    .nodes
+                    .iter()
+                    .map(|node| match node {
+                        project::Node::File { name, path } => button(text(name))
+                            .width(Length::Fill)
+                            .on_press(Message::OpenFile(path.to_owned()))
+                            .style(buttonStyle)
+                            .into(),
+                        project::Node::Directory { name, .. } => button(text(name))
+                            .width(Length::Fill)
+                            .style(buttonStyle)
+                            .into(),
+                    })
+                    .collect();
+                // pane_grid::Content::new(Column::from_vec(file_tree))
+                // let s = Limits::new(Length::Fill./, max)
+                pane_grid::Content::new(
+                    scrollable(
+                        Container::new(
+                            column![
+                                button("hello").width(Length::Fill).style(|_, _| {
+                                    button::Style {
+                                        background: Some(iced::Background::Color(
+                                            Color::from_rgb8(0xFF, 0xFF, 0xFF),
+                                        )),
+                                        text_color: Color::from_rgb8(0xFF, 0xFF, 0xFF),
+                                        ..Default::default()
+                                    }
+                                }),
+                                button("helaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaalo")
+                                    .width(Length::Fill)
+                                    .style(buttonStyle),
+                                button("hello").width(Length::Fill).style(buttonStyle),
+                            ]
+                            .extend(file_tree),
+                        )
+                        .width(Length::Shrink), // .max_width(Pixels::from(100)),
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill) // scrollable(Column::from_vec(file_tree).width(Length::Fill))
+                    //     .width(Length::Fill)
+                    //     .height(Length::Fill)
+                    .direction(scrollable::Direction::Both {
+                        vertical: scrollable::Scrollbar::default().scroller_width(0).width(0),
+                        horizontal: scrollable::Scrollbar::default().scroller_width(0).width(0),
+                    }),
+                )
             }
         })
         .width(Length::Fill)
@@ -237,19 +263,10 @@ impl App {
         .spacing(10)
         .on_resize(10, Message::PaneResized);
 
-        column![
-            nav_bar,
-            pane_grid //     row![
-                      //         container(
-                      //             Column::from_vec(file_tree)
-                      //                 .width(100.0)
-                      //                 .height(Length::Fill)
-                      //         )
-                      //         .style(containerStyle),
-                      //         self.tabs.view(),
-                      //     ]
-        ]
-        .into()
+        let content: Element<Message> = column![nav_bar, pane_grid].into();
+
+        // k.explain(iced::Color::WHITE)
+        content
     }
 
     fn subscription(&self) -> Subscription<Message> {
