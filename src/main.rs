@@ -28,6 +28,7 @@ enum Message {
     TabClose(usize),
     TabCloseCurrent,
     PaneResized(pane_grid::ResizeEvent),
+    ProjectTreeToggleDirectory(usize),
     SaveFile,
 }
 
@@ -88,7 +89,7 @@ impl Pane {
 
 struct App {
     tabs: tab::TabView,
-    project_tree: project::ProjectTree,
+    project_tree: Option<project::ProjectTree>,
     current_project: Option<project::Project>,
     key_binds: HashMap<key_binds::KeyBind, Message>,
     panes: pane_grid::State<Pane>,
@@ -111,7 +112,7 @@ impl App {
         (
             Self {
                 tabs: tab::TabView::new(),
-                project_tree: project::ProjectTree::new(),
+                project_tree: None,
                 current_project: None,
                 key_binds: key_binds::default(),
                 panes: create_pane(),
@@ -165,6 +166,13 @@ impl App {
             Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(split, ratio);
             }
+            Message::ProjectTreeToggleDirectory(id) => {
+                if let Some(tree) = &mut self.project_tree {
+                    if let Err(err) = tree.toggle_dir(id) {
+                        log::error!("could not toggle tree: {}", err)
+                    }
+                }
+            }
             _ => {
                 todo!()
             }
@@ -194,7 +202,12 @@ impl App {
             if state.pane_type == PaneType::Editor {
                 pane_grid::Content::new(self.tabs.view())
             } else {
-                let file_tree = self.project_tree.view();
+                let file_tree = if let Some(tree) = &self.project_tree {
+                    tree.view()
+                } else {
+                    Column::new()
+                };
+
                 pane_grid::Content::new(
                     scrollable(Container::new(file_tree))
                         .width(Length::Fill)
@@ -240,9 +253,9 @@ impl App {
 
     fn open_project(&mut self, dir_path: PathBuf) {
         self.current_project = Some(project::Project::new(dir_path.clone()));
-        if let Err(err) = self.project_tree.open_project(dir_path.clone()) {
-            log::error!("could not open project {:?}: {}", dir_path, err);
-            return;
+        match project::ProjectTree::new(dir_path.clone()) {
+            Ok(tree) => self.project_tree = Some(tree),
+            Err(err) => log::error!("could not open project {:?}: {}", dir_path, err),
         }
     }
 
