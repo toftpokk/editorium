@@ -37,13 +37,7 @@ pub struct Project {
 
 impl Project {
     pub fn new(file_path: PathBuf) -> Self {
-        let path = match fs::canonicalize(&file_path) {
-            Ok(ok) => ok,
-            Err(err) => {
-                log::error!("could not canonicalize path {:?}: {}", file_path, err);
-                file_path
-            }
-        };
+        let path = to_canonical(file_path);
 
         let name = path
             .file_name()
@@ -78,18 +72,13 @@ impl ProjectTree {
             let nodes = tree
                 .flatten()
                 .iter()
-                .map(|node| match node {
-                    Node::File { name, path } => button(text(name))
-                        .on_press(Message::OpenFile(path.to_owned()))
+                .map(|&node| match &node.kind {
+                    NodeKind::File => button(text(&node.name))
+                        .on_press(Message::OpenFile(node.path.to_owned()))
                         .style(button_style)
                         .into(),
-                    Node::Directory {
-                        name,
-                        path,
-                        children,
-                        open,
-                    } => button(text(name))
-                        .on_press(Message::OpenFile(path.to_owned()))
+                    NodeKind::Directory { children, open } => button(text(&node.name))
+                        .on_press(Message::ProjectTreeToggleDirectory(node.path.to_owned()))
                         .style(button_style)
                         .into(),
                 })
@@ -100,13 +89,13 @@ impl ProjectTree {
     }
 
     pub fn open_project(&mut self, path: PathBuf) -> Result<(), Error> {
+        let path = to_canonical(path);
+
         let mut node = Node::new(path);
-        if let Node::Directory {
-            name: _,
-            path: _,
+        if let NodeKind::Directory {
             children: _,
             open: _,
-        } = node
+        } = node.kind
         {
             let c = node.load_children()?;
             node.set_children(c)?;
@@ -117,14 +106,16 @@ impl ProjectTree {
     }
 }
 
-enum Node {
-    File {
-        name: String,
-        path: PathBuf,
-    },
+struct Node {
+    name: String,
+    path: PathBuf,
+    kind: NodeKind,
+}
+
+// https://stackoverflow.com/questions/49186751/sharing-a-common-value-in-all-enum-values
+enum NodeKind {
+    File,
     Directory {
-        name: String,
-        path: PathBuf,
         // for preloading
         children: Option<Vec<Node>>,
         // for ui
@@ -136,31 +127,29 @@ impl Node {
     fn new(path: PathBuf) -> Self {
         let name = path.file_name().unwrap().to_str().unwrap().to_string();
         return if path.is_dir() {
-            Self::Directory {
+            Self {
                 name: name,
                 path: path,
-                children: None,
-                open: false,
+                kind: NodeKind::Directory {
+                    children: None,
+                    open: false,
+                },
             }
         } else {
-            Self::File {
+            Self {
                 name: name,
                 path: path,
+                kind: NodeKind::File,
             }
         };
     }
 
     fn flatten(&self) -> Vec<&Node> {
-        match self {
-            Node::File { name, path } => {
+        match &self.kind {
+            NodeKind::File => {
                 vec![self]
             }
-            Node::Directory {
-                name,
-                path,
-                children,
-                open,
-            } => {
+            NodeKind::Directory { children, open } => {
                 let result = vec![self];
                 if !open {
                     return result;
@@ -177,12 +166,10 @@ impl Node {
     }
 
     fn set_children(&mut self, children: Vec<Node>) -> Result<(), Error> {
-        if let Node::Directory {
-            name,
-            path,
-            children: c,
-            open: o,
-        } = self
+        if let NodeKind::Directory {
+            children: ref mut c,
+            open: ref mut o,
+        } = self.kind
         {
             *c = Some(children);
             *o = true;
@@ -192,14 +179,12 @@ impl Node {
     }
 
     fn load_children(&self) -> Result<Vec<Node>, Error> {
-        if let Node::Directory {
-            name,
-            path,
-            children,
-            open,
-        } = self
+        if let NodeKind::Directory {
+            children: _,
+            open: _,
+        } = &self.kind
         {
-            let read_dir = fs::read_dir(&path)?;
+            let read_dir = fs::read_dir(&self.path)?;
             let mut nodes = Vec::new();
             for dir_entry in read_dir {
                 let entry = dir_entry?;
@@ -209,4 +194,8 @@ impl Node {
         }
         Err(Error::NotADirectory)
     }
+}
+
+fn to_canonical(path: PathBuf) -> PathBuf {
+    fs::canonicalize(&path).expect("could not canonicalize")
 }
