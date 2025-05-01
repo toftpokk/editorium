@@ -1,8 +1,4 @@
-use std::{
-    fmt::{self, write},
-    fs, io,
-    path::PathBuf,
-};
+use std::{fmt, fs, io, path::PathBuf};
 
 use iced::{
     Element,
@@ -74,21 +70,16 @@ impl ProjectTree {
         let path = to_canonical(path);
 
         let root = Node::new(path, 0, None);
-        let mut next_id = 1;
-        let mut tree = Vec::new();
-        if let NodeKind::Directory { open: _ } = root.kind {
-            let (mut children, id) = root.load_children(next_id)?;
-            next_id = id;
-            tree.push(root);
-            tree.append(&mut children);
-        } else {
-            tree.push(root);
-        }
+        let mut res = Self {
+            tree: vec![root],
+            next_id: 1,
+        };
 
-        Ok(Self {
-            tree: tree,
-            next_id: next_id,
-        })
+        if let NodeKind::Directory { open: _ } = res.tree[0].kind {
+            let (children, id) = res.tree[0].query_children(res.next_id)?;
+            res.add_children(children, id);
+        }
+        Ok(res)
     }
 
     pub fn view(&self) -> Column<Message> {
@@ -109,22 +100,81 @@ impl ProjectTree {
         Column::from_vec(nodes)
     }
 
+    // TODO implement b+ tree
     pub fn toggle_dir(&mut self, id: usize) -> Result<(), Error> {
-        if let Some(node) = self.tree.iter_mut().find(|x| x.id == id) {
-            node.edit(|n| {
-                if let NodeKind::Directory { open } = &mut n.kind {
-                    *open = !*open;
-                    Ok(())
+        let node = self.node_find(id)?;
+
+        let children_new = node.query_children()?;
+
+        let children_old: Vec<&Node> = self
+            .tree
+            .iter()
+            .filter(|n| {
+                if let Some(parent_id) = n.parent {
+                    parent_id == id
                 } else {
-                    Err(Error::NodeNotADirectory)
+                    false
                 }
             })
+            .collect();
+
+        // // loop through children
+
+        // things in children_old, but not in children_new
+        let to_remove = children_old.iter().filter(|entry| {
+            children_new
+                .iter()
+                .find(|x| x.path() == entry.path)
+                .is_none()
+        });
+
+        // things in children_old, but not in children_new
+        let to_add = children_new.iter().filter(|entry| {
+            children_old
+                .iter()
+                .find(|x| x.path == entry.path())
+                .is_none()
+        });
+
+        //     node.edit(|n| {
+        //         if let NodeKind::Directory { open } = &mut n.kind {
+        //             *open = !*open;
+        //             Ok(())
+        //         } else {
+        //             Err(Error::NodeNotADirectory)
+        //         }
+        //     })?;
+        //     // self.add_children(children, next_id);
+        Ok(())
+        // } else {
+        //     Err(Error::IDNotFound)
+        // }
+    }
+
+    fn add_children(&mut self, mut children: Vec<Node>, next_id: usize) {
+        self.tree.append(&mut children);
+
+        self.next_id = next_id;
+    }
+
+    fn node_find(&self, target_id: usize) -> Result<&Node, Error> {
+        if let Some(target) = self.tree.iter().find(|x| x.id == target_id) {
+            Ok(target)
         } else {
-            Err(Error::IDNotFound)
+            return Err(Error::IDNotFound);
+        }
+    }
+
+    fn node_edit<T>(&mut self, edit_fn: fn(&mut Node) -> T, target_id: usize) -> Result<T, Error> {
+        if let Some(target) = self.tree.iter_mut().find(|x| x.id == target_id) {
+            Ok(edit_fn(target))
+        } else {
+            return Err(Error::IDNotFound);
         }
     }
 }
 
+#[derive(Clone)]
 struct Node {
     id: usize,
     name: String,
@@ -134,6 +184,7 @@ struct Node {
 }
 
 // https://stackoverflow.com/questions/49186751/sharing-a-common-value-in-all-enum-values
+#[derive(Clone, Copy)]
 enum NodeKind {
     File,
     Directory { open: bool },
@@ -195,22 +246,17 @@ impl Node {
     //     Err(Error::NotADirectory)
     // }
 
-    fn load_children(&self, mut next_id: usize) -> Result<(Vec<Node>, usize), Error> {
+    fn query_children(&self) -> Result<(Vec<fs::DirEntry>), Error> {
         if let NodeKind::Directory { open: _ } = &self.kind {
             let read_dir = fs::read_dir(&self.path)?;
             let mut nodes = Vec::new();
             for dir_entry in read_dir {
                 let entry = dir_entry?;
-                nodes.push(Node::new(entry.path(), next_id, Some(self.id)));
-                next_id += 1;
+                nodes.push(entry);
             }
-            return Ok((nodes, next_id));
+            return Ok(nodes);
         }
         Err(Error::NodeNotADirectory)
-    }
-
-    fn edit<T>(&mut self, edit_fn: fn(&mut Self) -> T) -> T {
-        edit_fn(self)
     }
 }
 
