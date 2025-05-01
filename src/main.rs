@@ -5,8 +5,8 @@ use iced::{
     advanced::graphics::core::keyboard,
     event,
     widget::{
-        Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable, text,
-        text_editor,
+        Column, Container, PaneGrid, button, column, container, pane_grid, pick_list, row,
+        scrollable, text, text_editor,
     },
 };
 use iced_aw::iced_fonts;
@@ -198,50 +198,46 @@ impl App {
                     .iter()
                     .map(|node| match node {
                         project::Node::File { name, path } => button(text(name))
-                            .width(Length::Fill)
                             .on_press(Message::OpenFile(path.to_owned()))
                             .style(button_style)
                             .into(),
                         project::Node::Directory { name, path } => button(text(name))
                             .on_press(Message::OpenFile(path.to_owned()))
-                            .width(Length::Fill)
                             .style(button_style)
                             .into(),
                     })
                     .collect();
-                // pane_grid::Content::new(Column::from_vec(file_tree))
-                // let s = Limits::new(Length::Fill./, max)
                 pane_grid::Content::new(
-                    scrollable(
-                        Container::new(
-                            column![
-                                button("hello").width(Length::Fill).style(|_, _| {
-                                    button::Style {
+                    scrollable(Container::new(
+                        Column::from_vec(file_tree)
+                            // TESTING ONLY
+                            .extend(vec![
+                                button("hello")
+                                    .style(|_, _| button::Style {
                                         background: Some(iced::Background::Color(
                                             Color::from_rgb8(0xFF, 0xFF, 0xFF),
                                         )),
                                         text_color: Color::from_rgb8(0xFF, 0xFF, 0xFF),
                                         ..Default::default()
-                                    }
-                                }),
-                                button("helaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaalo")
-                                    .width(Length::Fill)
-                                    .style(button_style),
-                                button("hello").width(Length::Fill).style(button_style),
-                            ]
-                            .extend(file_tree),
-                        )
-                        .width(Length::Shrink), // .max_width(Pixels::from(100)),
-                    )
+                                    })
+                                    .into(),
+                                button("testtesttesttesttesttesttesttest")
+                                    .style(button_style)
+                                    .into(),
+                                button("test").style(button_style).into(),
+                            ]), // TODO: fix element width
+                    ))
                     .width(Length::Fill)
-                    .height(Length::Fill) // scrollable(Column::from_vec(file_tree).width(Length::Fill))
-                    //     .width(Length::Fill)
-                    //     .height(Length::Fill)
+                    .height(Length::Fill)
                     .direction(scrollable::Direction::Both {
                         vertical: scrollable::Scrollbar::default().scroller_width(0).width(0),
                         horizontal: scrollable::Scrollbar::default().scroller_width(0).width(0),
                     }),
                 )
+                .style(|_| container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
+                    ..Default::default()
+                })
             }
         })
         .width(Length::Fill)
