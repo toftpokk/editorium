@@ -7,9 +7,20 @@ use iced::{
 
 use crate::{Message, button_style};
 
-enum Error {
+#[derive()]
+pub enum Error {
     NotADirectory,
     Io(io::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // write!(f, "invalid first item to double")
+        match self {
+            Error::NotADirectory => write!(f, "not a directory"),
+            Error::Io(error) => write!(f, "io error: {}", error),
+        }
+    }
 }
 
 impl From<io::Error> for Error {
