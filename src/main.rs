@@ -88,7 +88,8 @@ impl Pane {
 
 struct App {
     tabs: tab::TabView,
-    project_tree: ProjectTree,
+    project_tree: project::ProjectTree,
+    current_project: Option<project::Project>,
     key_binds: HashMap<key_binds::KeyBind, Message>,
     panes: pane_grid::State<Pane>,
 }
@@ -110,7 +111,8 @@ impl App {
         (
             Self {
                 tabs: tab::TabView::new(),
-                project_tree: ProjectTree::new(),
+                project_tree: project::ProjectTree::new(),
+                current_project: None,
                 key_binds: key_binds::default(),
                 panes: create_pane(),
             },
@@ -130,14 +132,14 @@ impl App {
             },
             Message::OpenFileSelector => {
                 if let Some(file_path) =
-                    select_file(&self.project_tree.current.as_ref().map(|p| p.path.clone()))
+                    select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
                 {
                     self.open_file(file_path)
                 }
             }
             Message::OpenDirectorySelector => {
                 if let Some(dir_path) =
-                    select_dir(&self.project_tree.current.as_ref().map(|p| p.path.clone()))
+                    select_dir(&self.current_project.as_ref().map(|p| p.path.clone()))
                 {
                     self.open_project(dir_path)
                 }
@@ -174,12 +176,12 @@ impl App {
     fn view(&self) -> Element<Message> {
         let cwd = PathBuf::from_str("./").expect("could not get cwd");
 
-        let recent_projects = vec![Project::new(cwd)];
+        let recent_projects = vec![project::Project::new(cwd)];
         let nav_bar = row![
             pick_list(
                 recent_projects,
-                self.project_tree.current.clone(),
-                |project: Project| Message::OpenProject(project.path),
+                self.current_project.clone(),
+                |project: project::Project| Message::OpenProject(project.path),
             )
             .placeholder("Choose a Project"),
             button("Open File").on_press(Message::OpenFileSelector),
@@ -192,47 +194,15 @@ impl App {
             if state.pane_type == PaneType::Editor {
                 pane_grid::Content::new(self.tabs.view())
             } else {
-                let file_tree: Vec<Element<Message>> = self
-                    .project_tree
-                    .nodes
-                    .iter()
-                    .map(|node| match node {
-                        project::Node::File { name, path } => button(text(name))
-                            .on_press(Message::OpenFile(path.to_owned()))
-                            .style(button_style)
-                            .into(),
-                        project::Node::Directory { name, path } => button(text(name))
-                            .on_press(Message::OpenFile(path.to_owned()))
-                            .style(button_style)
-                            .into(),
-                    })
-                    .collect();
+                let file_tree = self.project_tree.view();
                 pane_grid::Content::new(
-                    scrollable(Container::new(
-                        Column::from_vec(file_tree)
-                            // TESTING ONLY
-                            .extend(vec![
-                                button("hello")
-                                    .style(|_, _| button::Style {
-                                        background: Some(iced::Background::Color(
-                                            Color::from_rgb8(0xFF, 0xFF, 0xFF),
-                                        )),
-                                        text_color: Color::from_rgb8(0xFF, 0xFF, 0xFF),
-                                        ..Default::default()
-                                    })
-                                    .into(),
-                                button("testtesttesttesttesttesttesttest")
-                                    .style(button_style)
-                                    .into(),
-                                button("test").style(button_style).into(),
-                            ]), // TODO: fix element width
-                    ))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .direction(scrollable::Direction::Both {
-                        vertical: scrollable::Scrollbar::default().scroller_width(0).width(0),
-                        horizontal: scrollable::Scrollbar::default().scroller_width(0).width(0),
-                    }),
+                    scrollable(Container::new(file_tree))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .direction(scrollable::Direction::Both {
+                            vertical: scrollable::Scrollbar::default().scroller_width(0).width(0),
+                            horizontal: scrollable::Scrollbar::default().scroller_width(0).width(0),
+                        }),
                 )
                 .style(|_| container::Style {
                     background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
@@ -269,27 +239,11 @@ impl App {
     }
 
     fn open_project(&mut self, dir_path: PathBuf) {
-        let read_dir = match fs::read_dir(&dir_path) {
-            Ok(ok) => ok,
-            Err(err) => {
-                log::error!("invalid directory {:?}: {}", dir_path, err);
-                return;
-            }
-        };
-        let mut nodes = Vec::new();
-        for dir_entry in read_dir {
-            let entry = match dir_entry {
-                Ok(ok) => ok,
-                Err(err) => {
-                    log::error!("invalid directory {:?}: {}", dir_path, err);
-                    return;
-                }
-            };
-            let entry_path = entry.path();
-            nodes.push(project::Node::new(entry_path));
+        self.current_project = Some(project::Project::new(dir_path.clone()));
+        if let Err(err) = self.project_tree.open_project(dir_path.clone()) {
+            log::error!("could not open project {:?}: {}", dir_path, err);
+            return;
         }
-
-        self.project_tree.with_project(nodes, dir_path);
     }
 
     fn open_file(&mut self, file_path: PathBuf) {
@@ -301,59 +255,6 @@ impl App {
         tab.open(&file_path);
         let idx = self.tabs.push(tab);
         self.tabs.select(idx);
-    }
-}
-
-#[derive(PartialEq, Clone)]
-struct Project {
-    name: String,
-    path: PathBuf,
-}
-
-impl Project {
-    fn new(file_path: PathBuf) -> Self {
-        let path = match fs::canonicalize(&file_path) {
-            Ok(ok) => ok,
-            Err(err) => {
-                log::error!("could not canonicalize path {:?}: {}", file_path, err);
-                file_path
-            }
-        };
-
-        let name = path
-            .file_name()
-            .expect("invalid dir name")
-            .to_str()
-            .expect("invalid dir name string");
-        Self {
-            name: name.to_string(),
-            path: path,
-        }
-    }
-}
-
-pub struct ProjectTree {
-    current: Option<Project>,
-    nodes: Vec<project::Node>,
-}
-
-impl ProjectTree {
-    fn new() -> Self {
-        Self {
-            current: None,
-            nodes: Vec::new(),
-        }
-    }
-    fn with_project(&mut self, nodes: Vec<project::Node>, path: PathBuf) -> &mut Self {
-        self.nodes = nodes;
-        self.current = Some(Project::new(path));
-        self
-    }
-}
-
-impl fmt::Display for Project {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.name)
     }
 }
 
