@@ -7,6 +7,17 @@ use iced::{
 
 use crate::{Message, button_style};
 
+enum Error {
+    NotADirectory,
+    Io(io::Error),
+}
+
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        return Error::Io(value);
+    }
+}
+
 #[derive(PartialEq, Clone)]
 pub struct Project {
     pub name: String,
@@ -77,7 +88,7 @@ impl ProjectTree {
         return items.into();
     }
 
-    pub fn open_project(&mut self, path: PathBuf) -> Result<(), io::Error> {
+    pub fn open_project(&mut self, path: PathBuf) -> Result<(), Error> {
         let mut node = Node::new(path);
         if let Node::Directory {
             name: _,
@@ -154,39 +165,37 @@ impl Node {
         }
     }
 
-    fn set_children(&mut self, children: Vec<Node>) -> Result<(), io::Error> {
-        match self {
-            Node::File { name, path } => panic!("not a directory"),
-            Node::Directory {
-                name,
-                path,
-                children: c,
-                open: o,
-            } => {
-                *c = Some(children);
-                *o = true;
-                Ok(())
-            }
+    fn set_children(&mut self, children: Vec<Node>) -> Result<(), Error> {
+        if let Node::Directory {
+            name,
+            path,
+            children: c,
+            open: o,
+        } = self
+        {
+            *c = Some(children);
+            *o = true;
+            return Ok(());
         }
+        Err(Error::NotADirectory)
     }
 
-    fn load_children(&self) -> Result<Vec<Node>, io::Error> {
-        match self {
-            Node::File { name: _, path: _ } => panic!("not a directory"),
-            Node::Directory {
-                name: _,
-                path,
-                children,
-                open,
-            } => {
-                let read_dir = fs::read_dir(&path)?;
-                let mut nodes = Vec::new();
-                for dir_entry in read_dir {
-                    let entry = dir_entry?;
-                    nodes.push(Node::new(entry.path()));
-                }
-                Ok(nodes)
+    fn load_children(&self) -> Result<Vec<Node>, Error> {
+        if let Node::Directory {
+            name,
+            path,
+            children,
+            open,
+        } = self
+        {
+            let read_dir = fs::read_dir(&path)?;
+            let mut nodes = Vec::new();
+            for dir_entry in read_dir {
+                let entry = dir_entry?;
+                nodes.push(Node::new(entry.path()));
             }
+            return Ok(nodes);
         }
+        Err(Error::NotADirectory)
     }
 }
