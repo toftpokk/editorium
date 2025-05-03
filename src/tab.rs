@@ -158,7 +158,7 @@ impl Tab {
     fn new() -> Self {
         let metrics = Metrics::new(14.0, 20.0);
         let buffer = Buffer::new_empty(metrics);
-        let attrs = Attrs::new();
+        let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
         let syntax_system: &SyntaxSystem = SYNTAX_SYSTEM.get().unwrap();
         let editor = SyntaxEditor::new(buffer, &syntax_system, "base16-mocha.dark").unwrap();
         Self {

@@ -57,7 +57,7 @@
 //     }
 // }
 
-use std::{cmp, sync::RwLock, u8};
+use std::{cmp, sync::RwLock};
 
 // use cosmic_text::{Edit, SyntaxEditor};
 // // use iced::advanced::graphics::Image;
@@ -73,8 +73,7 @@ use std::{cmp, sync::RwLock, u8};
 use cosmic_text::{Edit, SyntaxEditor};
 use iced::{
     Element, Length, Rectangle, Size,
-    advanced::{Layout, Widget, image, layout, renderer, widget},
-    futures::future::err,
+    advanced::{Layout, Widget, image, layout, widget},
 };
 
 use crate::{FONT_SYSTEM, SWASH_CACHE};
@@ -152,9 +151,10 @@ where
 
         let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
         let mut swash_cache = SWASH_CACHE.get().unwrap().write().unwrap();
-        let editor = self.editor.write().unwrap();
+        let mut editor = self.editor.write().unwrap();
+        editor.shape_as_needed(&mut font_system, true);
 
-        let mut pixels_u8 = vec![u8::MAX; image_w as usize * image_h as usize * 4];
+        let mut pixels_u8 = vec![0; image_w as usize * image_h as usize * 4];
         {
             let pixels = unsafe {
                 std::slice::from_raw_parts_mut(
@@ -184,7 +184,7 @@ where
         let bounds = Rectangle::new(layout.position(), size);
 
         let handle = image::Handle::from_rgba(image_w, image_h, pixels_u8);
-        let image = image::Image::from(&handle);
+        let image = image::Image::from(&handle).filter_method(image::FilterMethod::Nearest);
 
         renderer.draw_image(image, bounds);
         // renderer.draw_image(image, bounds);
