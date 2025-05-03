@@ -46,10 +46,10 @@ impl TabView {
 
         self.tabs.remove(index);
 
-        // check tab is active
-        if let Some(active) = self.active {
-            if active == index {
-                // tab is active
+        // check shift left
+        let last_active = if let Some(active) = self.active {
+            if active >= index {
+                active
             } else {
                 return;
             }
@@ -58,8 +58,8 @@ impl TabView {
             return;
         };
 
-        if index > 0 {
-            self.active = Some(index - 1);
+        if last_active > 0 {
+            self.active = Some(last_active - 1);
         } else {
             if self.tabs.len() > 0 {
                 self.active = Some(0)
@@ -183,6 +183,7 @@ impl Tab {
             .unwrap()
             .borrow_with(&mut font_system)
             .load_text(file_path.clone(), self.attrs.clone())?;
+        self.file_path = Some(file_path);
         Ok(())
     }
 

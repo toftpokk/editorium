@@ -320,6 +320,7 @@ impl App {
     }
 
     fn open_file(&mut self, file_path: PathBuf) {
+        let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
         if let Some(pos) = self.tabs.position(file_path.clone()) {
             self.tabs.activate(pos);
             return;
