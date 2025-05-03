@@ -1,13 +1,16 @@
-use std::fs;
 use std::path::PathBuf;
+use std::sync::RwLock;
+use std::{fs, io};
 
 use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
-use iced::futures::io;
 use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
 use iced::{Alignment, Element, Font, Length, Padding, Pixels};
 use iced_aw::TabBar;
+use tab_widget::tab_widget;
 
 use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM};
+
+mod tab_widget;
 
 // TODO: use viewer(model) instead of model.view()
 
@@ -142,8 +145,12 @@ impl TabView {
 pub struct Tab {
     pub file_path: Option<PathBuf>,
 
-    editor: SyntaxEditor<'static, 'static>,
+    editor: RwLock<SyntaxEditor<'static, 'static>>, // RwLock allows writing during draw
     attrs: Attrs<'static>,
+    metrics: Metrics,
+
+    padding: Padding,
+    line_numbers: bool,
 }
 
 impl Tab {
@@ -155,14 +162,24 @@ impl Tab {
         let editor = SyntaxEditor::new(buffer, &syntax_system, "base16-mocha.dark").unwrap();
         Self {
             file_path: None,
-            editor,
+            editor: RwLock::new(editor),
             attrs,
+            padding: Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 0.0,
+            },
+            metrics,
+            line_numbers: true,
         }
     }
 
     pub fn open_file(&mut self, file_path: PathBuf) -> io::Result<()> {
         let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
         self.editor
+            .write()
+            .unwrap()
             .borrow_with(&mut font_system)
             .load_text(file_path.clone(), self.attrs.clone())?;
         Ok(())
@@ -171,7 +188,7 @@ impl Tab {
     pub fn save(&mut self) -> io::Result<()> {
         if let Some(path) = &self.file_path {
             let mut text = String::new();
-            self.editor.with_buffer(|buf| {
+            self.editor.write().unwrap().with_buffer(|buf| {
                 for line in buf.lines.iter() {
                     text.push_str(line.text());
                     text.push_str(line.ending().as_str());
@@ -202,27 +219,27 @@ impl Tab {
         //     let syntax_theme = highlighter::Theme::SolarizedDark;
 
         Scrollable::new(row![
-        //         // TODO
-        //         // line_number(self.content.line_count(), font_size, line_height,),
-        //         // text_editor(&self.content)
-        //         //     .font(Font::MONOSPACE)
-        //         //     .size(font_size)
-        //         //     .line_height(line_height)
-        //         //     .padding(Padding {
-        //         //         top: 0.0,
-        //         //         bottom: 0.0,
-        //         //         left: 5.0,
-        //         //         right: 0.0,
-        //         //     })
-        //         //     .highlight(
-        //         //         self.file_path
-        //         //             .as_deref()
-        //         //             .and_then(path::Path::extension)
-        //         //             .and_then(ffi::OsStr::to_str)
-        //         //             .unwrap_or(""),
-        //         //         syntax_theme,
-        //         //     )
-        //         //     .on_action(Message::Edit)
+            tab_widget() //         // TODO
+                         //         // line_number(self.content.line_count(), font_size, line_height,),
+                         //         // text_editor(&self.content)
+                         //         //     .font(Font::MONOSPACE)
+                         //         //     .size(font_size)
+                         //         //     .line_height(line_height)
+                         //         //     .padding(Padding {
+                         //         //         top: 0.0,
+                         //         //         bottom: 0.0,
+                         //         //         left: 5.0,
+                         //         //         right: 0.0,
+                         //         //     })
+                         //         //     .highlight(
+                         //         //         self.file_path
+                         //         //             .as_deref()
+                         //         //             .and_then(path::Path::extension)
+                         //         //             .and_then(ffi::OsStr::to_str)
+                         //         //             .unwrap_or(""),
+                         //         //         syntax_theme,
+                         //         //     )
+                         //         //     .on_action(Message::Edit)
         ])
         .height(Length::Fill)
         .direction(scrollable::Direction::Vertical(
