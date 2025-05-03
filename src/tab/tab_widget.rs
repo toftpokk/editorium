@@ -57,7 +57,7 @@
 //     }
 // }
 
-use std::{sync::RwLock, u8};
+use std::{cmp, sync::RwLock, u8};
 
 // use cosmic_text::{Edit, SyntaxEditor};
 // // use iced::advanced::graphics::Image;
@@ -139,12 +139,20 @@ where
         cursor: iced::advanced::mouse::Cursor,
         viewport: &Rectangle,
     ) {
+        let view_w = cmp::min(viewport.width as i32, layout.bounds().width as i32);
+        // - self.padding.horizontal() as i32
+        // - scrollbar_w;
+        let view_h = cmp::min(viewport.height as i32, layout.bounds().height as i32);
+        // - self.padding.vertical() as i32;
+
+        let image_w = view_w as u32;
+        let image_h = view_h as u32;
+        // let image_w: u32 = 500;
+        // let image_h: u32 = 500;
+
         let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
         let mut swash_cache = SWASH_CACHE.get().unwrap().write().unwrap();
         let editor = self.editor.write().unwrap();
-
-        let image_w: u32 = 500;
-        let image_h: u32 = 500;
 
         let mut pixels_u8 = vec![u8::MAX; image_w as usize * image_h as usize * 4];
         {
@@ -172,12 +180,8 @@ where
             });
         }
 
-        let bounds = Rectangle {
-            x: 0.0,
-            y: 0.0,
-            width: 500.0,
-            height: 500.0,
-        };
+        let size = Size::new(view_w as f32, view_h as f32);
+        let bounds = Rectangle::new(layout.position(), size);
 
         let handle = image::Handle::from_rgba(image_w, image_h, pixels_u8);
         let image = image::Image::from(&handle);
