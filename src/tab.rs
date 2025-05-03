@@ -1,15 +1,10 @@
-use std::cmp::min;
+use std::fs;
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex, RwLock};
-use std::{ffi, fs, path};
 
-use cosmic_text::{
-    Action, Attrs, Buffer, Edit, FontSystem, Metrics, Shaping, SyntaxEditor, SyntaxSystem,
-};
-use iced::futures::future::Lazy;
+use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
 use iced::futures::io;
 use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
-use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter};
+use iced::{Alignment, Element, Font, Length, Padding, Pixels};
 use iced_aw::TabBar;
 
 use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM};
@@ -29,10 +24,13 @@ impl TabView {
         }
     }
 
-    pub fn insert(&mut self, path: Option<PathBuf>) -> usize {
-        let tab = Tab::new(path);
+    pub fn insert(&mut self, path: Option<PathBuf>) -> io::Result<usize> {
+        let mut tab = Tab::new();
+        if let Some(path) = path {
+            tab.open_file(path)?;
+        }
         self.tabs.push(tab);
-        self.tabs.len() - 1
+        Ok(self.tabs.len() - 1)
     }
 
     pub fn remove(&mut self, index: usize) {
@@ -139,21 +137,6 @@ impl TabView {
 
         Column::new().push(tab_bar).push(main).into()
     }
-
-    // pub fn close(&mut self, pos: usize) {
-    //     if let Some(_) = self.tabs.get(pos) {
-    //         self.tabs.remove(pos);
-    //         self.active_pos = pos.saturating_add_signed(-1);
-    //     }
-    // }
-
-    // pub fn get_active_pos(&self) -> usize {
-    //     self.active_pos
-    // }
-
-    // pub fn get_current(&mut self) -> Option<&mut Tab> {
-    //     self.tabs.get_mut(self.active_pos)
-    // }
 }
 
 pub struct Tab {
@@ -164,25 +147,24 @@ pub struct Tab {
 }
 
 impl Tab {
-    fn new(path: Option<PathBuf>) -> Self {
+    fn new() -> Self {
         let metrics = Metrics::new(14.0, 20.0);
         let buffer = Buffer::new_empty(metrics);
         let attrs = Attrs::new();
         let syntax_system: &SyntaxSystem = SYNTAX_SYSTEM.get().unwrap();
         let editor = SyntaxEditor::new(buffer, &syntax_system, "base16-mocha.dark").unwrap();
         Self {
-            file_path: path,
+            file_path: None,
             editor,
             attrs,
         }
     }
 
-    pub fn open(&mut self, file_path: path::PathBuf) -> io::Result<()> {
+    pub fn open_file(&mut self, file_path: PathBuf) -> io::Result<()> {
         let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
         self.editor
             .borrow_with(&mut font_system)
-            .load_text(file_path.clone(), self.attrs.clone());
-        // self.name =
+            .load_text(file_path.clone(), self.attrs.clone())?;
         Ok(())
     }
 

@@ -175,7 +175,10 @@ impl App {
             Message::SaveFile => {
                 if let Some(active) = self.tabs.active() {
                     let tab = self.tabs.tab_mut(active).unwrap();
-                    tab.save();
+                    match tab.save() {
+                        Ok(_) => {}
+                        Err(err) => log::error!("could not open directory: {}", err),
+                    }
                 };
             }
             Message::TabCloseCurrent => {
@@ -322,7 +325,13 @@ impl App {
             self.tabs.activate(pos);
             return;
         }
-        let index = self.tabs.insert(Some(file_path));
+        let index = match self.tabs.insert(Some(file_path)) {
+            Ok(ok) => ok,
+            Err(err) => {
+                log::error!("could not open file: {}", err);
+                return;
+            }
+        };
         self.tabs.activate(index);
     }
 
