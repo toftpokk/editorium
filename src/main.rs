@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
 
+use clap::Parser;
 use iced::{
     Color, Element, Length, Subscription, Task, Theme,
     advanced::graphics::core::keyboard,
@@ -12,6 +13,7 @@ use iced::{
 use iced_aw::iced_fonts;
 use rfd::FileDialog;
 
+mod cli;
 mod key_binds;
 mod project;
 mod tab;
@@ -107,15 +109,20 @@ fn create_pane() -> pane_grid::State<Pane> {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        (
-            Self {
-                tabs: tab::TabView::new(),
-                project_tree: ProjectTree::new(),
-                key_binds: key_binds::default(),
-                panes: create_pane(),
-            },
-            Task::none(),
-        )
+        let cli = cli::Cli::parse();
+
+        let mut app = Self {
+            tabs: tab::TabView::new(),
+            project_tree: ProjectTree::new(),
+            key_binds: key_binds::default(),
+            panes: create_pane(),
+        };
+
+        if let Some(path) = cli.path {
+            app.open_file(path);
+        }
+
+        (app, Task::none())
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
