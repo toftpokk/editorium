@@ -1,15 +1,7 @@
-use std::{
-    cmp::min,
-    collections::HashMap,
-    fmt, fs, io,
-    iter::Map,
-    ops::{Index, Mul},
-    path::PathBuf,
-};
+use std::{cmp::min, collections::HashMap, fmt, io, path::PathBuf};
 
 use iced::{
     Color, Element, Padding, Theme,
-    mouse::Button,
     widget::{Column, button, text},
 };
 
@@ -127,7 +119,7 @@ impl ProjectTree {
                         })
                         .style(button_style)
                         .into(),
-                    NodeKind::Directory { open } => button(text(&node.name))
+                    NodeKind::Directory { .. } => button(text(&node.name))
                         .on_press(Message::ProjectTreeSelect(node.id))
                         .padding(Padding {
                             top: 0.0,

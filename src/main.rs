@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, fs, io, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, fs, path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use iced::{
@@ -6,8 +6,8 @@ use iced::{
     advanced::graphics::core::keyboard,
     event,
     widget::{
-        Column, Container, PaneGrid, button, column, container, pane_grid, pick_list, row,
-        scrollable, text, text_editor,
+        Container, PaneGrid, button, column, container, pane_grid, pick_list, row, scrollable,
+        text_editor,
     },
 };
 use iced_aw::iced_fonts;
@@ -206,6 +206,7 @@ impl App {
                     }
                 }
             }
+            #[allow(unreachable_patterns)]
             _ => {
                 todo!()
             }
@@ -216,7 +217,7 @@ impl App {
 
     fn view(&self) -> Element<Message> {
         let cwd = PathBuf::from_str("./").expect("could not get cwd");
-        let cwd = match (fs::canonicalize(cwd)) {
+        let cwd = match fs::canonicalize(cwd) {
             Ok(ok) => ok,
             Err(err) => {
                 panic!("could not open directory: {}", err);
