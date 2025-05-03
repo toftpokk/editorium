@@ -9,3 +9,4 @@ iced = {version = "0.13.1", features = ["highlighter"]}
 iced_aw = "0.12.2"
 log = "0.4.27"
 rfd = "0.15.3"
+clap = {version="4.5.37", features=["derive"]}
