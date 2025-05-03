@@ -70,10 +70,11 @@ use std::{sync::RwLock, u8};
 // use iced::{Color, Element, Length, Rectangle, Size};
 // use iced::{Shadow, mouse};
 
-use cosmic_text::SyntaxEditor;
+use cosmic_text::{Edit, SyntaxEditor};
 use iced::{
     Element, Length, Rectangle, Size,
     advanced::{Layout, Widget, image, layout, renderer, widget},
+    futures::future::err,
 };
 
 use crate::{FONT_SYSTEM, SWASH_CACHE};
@@ -92,8 +93,8 @@ where
 {
     fn size(&self) -> Size<Length> {
         Size {
-            width: Length::Shrink,
-            height: Length::Shrink,
+            width: Length::Fill,
+            height: Length::Fill,
         }
     }
 
@@ -105,9 +106,27 @@ where
     ) -> layout::Node {
         let limits = limits.width(Length::Fill).height(Length::Fill);
 
-        let size = Size::new(limits.max().width, 20.0);
+        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
 
-        iced::advanced::layout::Node::new(limits.resolve(Length::Fill, Length::Fill, size))
+        // FIXME should editor be written during layout?
+        let editor = &mut self.editor.write().unwrap();
+
+        editor.borrow_with(&mut font_system).shape_as_needed(true); // FIXME Scroll
+
+        editor.with_buffer(|buffer| {
+            let mut lines = 0;
+            for line in buffer.lines.iter() {
+                // one buffer line can wrap into multiple
+                if let Some(opt) = line.layout_opt() {
+                    lines += opt.len()
+                }
+            }
+
+            let height = lines as f32 * buffer.metrics().line_height;
+            let size = Size::new(limits.max().width, height);
+
+            iced::advanced::layout::Node::new(limits.resolve(Length::Fill, Length::Fill, size))
+        })
     }
 
     fn draw(
@@ -124,13 +143,34 @@ where
         let mut swash_cache = SWASH_CACHE.get().unwrap().write().unwrap();
         let editor = self.editor.write().unwrap();
 
-        // editor.draw(&mut font_system, &mut swash_cache, |x, y, w, h, color| {
-        //     //
-        // });
-        let image_w = 500;
-        let image_h = 500;
+        let image_w: u32 = 500;
+        let image_h: u32 = 500;
 
         let mut pixels_u8 = vec![u8::MAX; image_w as usize * image_h as usize * 4];
+        {
+            let pixels = unsafe {
+                std::slice::from_raw_parts_mut(
+                    pixels_u8.as_mut_ptr() as *mut u32,
+                    pixels_u8.len() / 4,
+                )
+            };
+
+            editor.draw(&mut font_system, &mut swash_cache, |x, y, w, h, color| {
+                draw_rect(
+                    pixels,
+                    Canvas {
+                        w: image_w as i32,
+                        h: image_h as i32,
+                    },
+                    Canvas {
+                        w: w as i32,
+                        h: h as i32,
+                    },
+                    Offset { x, y },
+                    color,
+                );
+            });
+        }
 
         let bounds = Rectangle {
             x: 0.0,
@@ -138,7 +178,6 @@ where
             width: 500.0,
             height: 500.0,
         };
-        // let handle = iced::advanced::image::Handle::from_rgba(image_w, image_h, pixels_u8);
 
         let handle = image::Handle::from_rgba(image_w, image_h, pixels_u8);
         let image = image::Image::from(&handle);
@@ -165,6 +204,97 @@ where
 {
     fn from(value: TabWidget<'a>) -> Self {
         Self::new(value)
+    }
+}
+
+struct Canvas {
+    w: i32,
+    h: i32,
+}
+
+struct Offset {
+    x: i32,
+    y: i32,
+}
+
+/// This function is called canvas.x * canvas.y number of times
+/// each time the text is scrolled or the canvas is resized.
+/// If the canvas is moved, it's not called as the pixel buffer
+/// is the same, it's just translated for the screen's x, y.
+/// canvas is the location of the pixel in the canvas.
+/// Screen is the location of the pixel on the screen.
+// TODO: improve performance
+fn draw_rect(
+    buffer: &mut [u32],
+    canvas: Canvas,
+    offset: Canvas,
+    screen: Offset,
+    cosmic_color: cosmic_text::Color,
+) {
+    // Grab alpha channel and green channel
+    let mut color = cosmic_color.0 & 0xFF00FF00;
+    // Shift red channel
+    color |= (cosmic_color.0 & 0x00FF0000) >> 16;
+    // Shift blue channel
+    color |= (cosmic_color.0 & 0x000000FF) << 16;
+
+    let alpha = (color >> 24) & 0xFF;
+    match alpha {
+        0 => {
+            // Do not draw if alpha is zero.
+        }
+        255 => {
+            // Handle overwrite
+            for x in screen.x..screen.x + offset.w {
+                if x < 0 || x >= canvas.w {
+                    // Skip if y out of bounds
+                    continue;
+                }
+
+                for y in screen.y..screen.y + offset.h {
+                    if y < 0 || y >= canvas.h {
+                        // Skip if x out of bounds
+                        continue;
+                    }
+
+                    let line_offset = y as usize * canvas.w as usize;
+                    let offset = line_offset + x as usize;
+                    buffer[offset] = color;
+                }
+            }
+        }
+        _ => {
+            let n_alpha = 255 - alpha;
+            for y in screen.y..screen.y + offset.h {
+                if y < 0 || y >= canvas.h {
+                    // Skip if y out of bounds
+                    continue;
+                }
+
+                let line_offset = y as usize * canvas.w as usize;
+                for x in screen.x..screen.x + offset.w {
+                    if x < 0 || x >= canvas.w {
+                        // Skip if x out of bounds
+                        continue;
+                    }
+
+                    // Alpha blend with current value
+                    let offset = line_offset + x as usize;
+                    let current = buffer[offset];
+                    if current & 0xFF000000 == 0 {
+                        // Overwrite if buffer empty
+                        buffer[offset] = color;
+                    } else {
+                        let rb = ((n_alpha * (current & 0x00FF00FF))
+                            + (alpha * (color & 0x00FF00FF)))
+                            >> 8;
+                        let ag = (n_alpha * ((current & 0xFF00FF00) >> 8))
+                            + (alpha * (0x01000000 | ((color & 0x0000FF00) >> 8)));
+                        buffer[offset] = (rb & 0x00FF00FF) | (ag & 0xFF00FF00);
+                    }
+                }
+            }
+        }
     }
 }
 
