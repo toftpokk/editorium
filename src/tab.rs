@@ -1,17 +1,21 @@
 use std::path::PathBuf;
 use std::{ffi, fs, path};
 
-use iced::widget::{
-    Column, Row, Scrollable, column, container, row, scrollable, text, text_editor,
+use cosmic_text::{
+    Action, Attrs, Buffer, Edit, FontSystem, Metrics, Shaping, SyntaxEditor, SyntaxSystem,
 };
+use iced::futures::io;
+use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
 use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter};
 use iced_aw::TabBar;
 
 use crate::Message;
 
-pub struct TabView {
+// TODO: use viewer(model) instead of model.view()
+
+pub struct TabView<'a> {
     active_pos: usize,
-    tabs: Vec<Tab>,
+    tabs: Vec<Tab<'a>>,
 }
 
 impl TabView {
@@ -80,68 +84,70 @@ impl TabView {
     }
 }
 
-pub struct Tab {
+pub struct Tab<'tab> {
     pub name: String,
-    file_name: Option<String>,
     pub file_path: Option<path::PathBuf>,
-    content: text_editor::Content,
+    pub file_name: Option<String>,
+
+    // // font_system: &'tab mut FontSystem,
+    editor: SyntaxEditor<'static, 'tab>,
+    attrs: Attrs<'static>,
 }
 
-impl Tab {
-    pub fn new() -> Self {
+impl<'tab> Tab<'tab> {
+    pub fn new(syntax_system: &'tab SyntaxSystem, font_system: &'tab mut FontSystem) -> Self {
+        let metrics = Metrics::new(14.0, 20.0);
+        let buffer = Buffer::new(font_system, metrics);
+        // let syntax_system = SyntaxSystem::new();
+        let attrs = Attrs::new();
         Self {
             name: "New Tab".to_owned(),
             file_path: None,
             file_name: None,
-            content: text_editor::Content::new(),
+            font_system,
+            editor: SyntaxEditor::new(buffer, syntax_system, "base16-mocha.dark").unwrap(),
+            attrs,
         }
     }
 
-    pub fn open(&mut self, file_path: &path::PathBuf) {
-        let file_path = match fs::canonicalize(file_path) {
-            Ok(ok) => ok,
-            Err(err) => {
-                log::error!("could not canonicalize file {:?}: {}", file_path, err);
-                return;
-            }
-        };
-        match fs::read_to_string(&file_path) {
-            Ok(content) => {
-                self.content = text_editor::Content::with_text(&content);
-                let file_name = file_path
-                    .file_name()
-                    .expect("invalid file")
-                    .to_str()
-                    .expect("invalid file name")
-                    .to_owned();
-                self.name = file_name.clone();
-                self.file_name = Some(file_name);
-                self.file_path = Some(file_path);
-            }
-            Err(err) => {
-                log::error!("Could not load file {:?}: {}", file_path, err)
-            }
-        }
+    pub fn open(&mut self, file_path: path::PathBuf) -> io::Result<()> {
+        self.editor
+            .load_text(self.font_system, file_path.clone(), self.attrs.clone())?;
+        self.name = file_path
+            .file_name()
+            .expect("invalid file")
+            .to_str()
+            .expect("invalid file name")
+            .to_owned();
+        Ok(())
     }
 
-    pub fn save(&mut self) {
+    pub fn save(&mut self) -> io::Result<()> {
         if let Some(path) = &self.file_path {
-            match fs::write(path, self.content.text()) {
-                Ok(()) => self.name = self.get_title(),
-                Err(err) => {
-                    log::error!("{}", err);
-                    return;
+            let mut text = String::new();
+            self.editor.with_buffer(|buf| {
+                for line in buf.lines.iter() {
+                    text.push_str(line.text());
+                    text.push_str(line.ending().as_str());
                 }
-            }
+            });
+
+            return fs::write(path, text);
         }
+        Ok(())
     }
 
-    pub fn action(&mut self, action: text_editor::Action) {
+    pub fn action(&mut self, action: Action) {
         match &action {
-            text_editor::Action::Edit(_) => self.name = format!("{}*", self.get_title()),
-            _ => {}
+            Action::Motion(_)
+            | Action::Escape
+            | Action::Click { .. }
+            | Action::DoubleClick { .. }
+            | Action::Drag { .. } => {}
+            _ => self.name = format!("{}*", self.get_title()),
         }
-        self.content.perform(action)
+        // self.content.perform(action)
+        self.editor.action(self.font_system, action);
     }
 
     pub fn view(&self) -> Scrollable<Message> {
@@ -150,26 +156,27 @@ impl Tab {
         let syntax_theme = highlighter::Theme::SolarizedDark;
 
         Scrollable::new(row![
-            line_number(self.content.line_count(), font_size, line_height,),
-            text_editor(&self.content)
-                .font(Font::MONOSPACE)
-                .size(font_size)
-                .line_height(line_height)
-                .padding(Padding {
-                    top: 0.0,
-                    bottom: 0.0,
-                    left: 5.0,
-                    right: 0.0,
-                })
-                .highlight(
-                    self.file_path
-                        .as_deref()
-                        .and_then(path::Path::extension)
-                        .and_then(ffi::OsStr::to_str)
-                        .unwrap_or(""),
-                    syntax_theme,
-                )
-                .on_action(Message::Edit)
+            // TODO
+            // line_number(self.content.line_count(), font_size, line_height,),
+            // text_editor(&self.content)
+            //     .font(Font::MONOSPACE)
+            //     .size(font_size)
+            //     .line_height(line_height)
+            //     .padding(Padding {
+            //         top: 0.0,
+            //         bottom: 0.0,
+            //         left: 5.0,
+            //         right: 0.0,
+            //     })
+            //     .highlight(
+            //         self.file_path
+            //             .as_deref()
+            //             .and_then(path::Path::extension)
+            //             .and_then(ffi::OsStr::to_str)
+            //             .unwrap_or(""),
+            //         syntax_theme,
+            //     )
+            //     .on_action(Message::Edit)
         ])
         .height(Length::Fill)
         .direction(scrollable::Direction::Vertical(
