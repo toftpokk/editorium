@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, fmt, fs, io, path::PathBuf, str::FromStr};
 
 use iced::{
     Color, Element, Length, Subscription, Task, Theme,
@@ -28,7 +28,7 @@ enum Message {
     TabClose(usize),
     TabCloseCurrent,
     PaneResized(pane_grid::ResizeEvent),
-    ProjectTreeToggleDirectory(usize),
+    ProjectTreeSelect(usize),
     SaveFile,
 }
 
@@ -89,7 +89,7 @@ impl Pane {
 
 struct App {
     tabs: tab::TabView,
-    project_tree: Option<project::ProjectTree>,
+    project_tree: project::ProjectTree,
     current_project: Option<project::Project>,
     key_binds: HashMap<key_binds::KeyBind, Message>,
     panes: pane_grid::State<Pane>,
@@ -112,7 +112,7 @@ impl App {
         (
             Self {
                 tabs: tab::TabView::new(),
-                project_tree: None,
+                project_tree: project::ProjectTree::new(),
                 current_project: None,
                 key_binds: key_binds::default(),
                 panes: create_pane(),
@@ -166,10 +166,36 @@ impl App {
             Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(split, ratio);
             }
-            Message::ProjectTreeToggleDirectory(id) => {
-                if let Some(tree) = &mut self.project_tree {
-                    if let Err(err) = tree.toggle_dir(id) {
-                        log::error!("could not toggle tree: {}", err)
+            Message::ProjectTreeSelect(id) => {
+                let node = if let Some(node) = self.project_tree.node_mut(id) {
+                    if let project::NodeKind::Directory { open } = &mut node.kind {
+                        *open = !*open;
+                    }
+                    Some(node.clone())
+                } else {
+                    None
+                };
+
+                let pos = self.project_tree.position(id).unwrap();
+
+                if let Some(node) = node {
+                    match node.kind {
+                        project::NodeKind::Directory { open } => {
+                            if open {
+                                self.tree_open_dir(node.path, pos, node.indent + 1);
+                            } else {
+                                while let Some(child) = self.project_tree.node_at(pos + 1) {
+                                    if child.indent > node.indent {
+                                        self.project_tree.remove(child.id);
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        project::NodeKind::File => {
+                            self.open_file(node.path);
+                        }
                     }
                 }
             }
@@ -183,6 +209,12 @@ impl App {
 
     fn view(&self) -> Element<Message> {
         let cwd = PathBuf::from_str("./").expect("could not get cwd");
+        let cwd = match (fs::canonicalize(cwd)) {
+            Ok(ok) => ok,
+            Err(err) => {
+                panic!("could not open directory: {}", err);
+            }
+        };
 
         let recent_projects = vec![project::Project::new(cwd)];
         let nav_bar = row![
@@ -202,11 +234,7 @@ impl App {
             if state.pane_type == PaneType::Editor {
                 pane_grid::Content::new(self.tabs.view())
             } else {
-                let file_tree = if let Some(tree) = &self.project_tree {
-                    tree.view()
-                } else {
-                    Column::new()
-                };
+                let file_tree = self.project_tree.view();
 
                 pane_grid::Content::new(
                     scrollable(Container::new(file_tree))
@@ -251,12 +279,11 @@ impl App {
         Theme::CatppuccinFrappe
     }
 
-    fn open_project(&mut self, dir_path: PathBuf) {
-        self.current_project = Some(project::Project::new(dir_path.clone()));
-        match project::ProjectTree::new(dir_path.clone()) {
-            Ok(tree) => self.project_tree = Some(tree),
-            Err(err) => log::error!("could not open project {:?}: {}", dir_path, err),
-        }
+    fn open_project(&mut self, path: PathBuf) {
+        let path = fs::canonicalize(&path).expect("could not canonicalize");
+        self.current_project = Some(project::Project::new(path.clone()));
+        self.project_tree.clear();
+        self.project_tree.insert(path, 0, 0);
     }
 
     fn open_file(&mut self, file_path: PathBuf) {
@@ -268,6 +295,37 @@ impl App {
         tab.open(&file_path);
         let idx = self.tabs.push(tab);
         self.tabs.select(idx);
+    }
+
+    fn tree_open_dir(&mut self, path: PathBuf, pos: usize, indent: usize) {
+        let path = fs::canonicalize(&path).expect("could not canonicalize");
+
+        let read_dir = match fs::read_dir(path) {
+            Ok(ok) => ok,
+            Err(err) => {
+                log::error!("could not open directory: {}", err);
+                return;
+            }
+        };
+        let mut nodes = Vec::new();
+        for dir_entry in read_dir {
+            match dir_entry {
+                Ok(ok) => {
+                    nodes.push(ok.path());
+                }
+                Err(err) => {
+                    log::error!("could not read directory entry: {}", err);
+                    return;
+                }
+            }
+        }
+        nodes.sort();
+
+        let mut position = pos + 1;
+        for node in nodes {
+            self.project_tree.insert(node, position, indent);
+            position += 1;
+        }
     }
 }
 
