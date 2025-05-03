@@ -217,29 +217,31 @@ impl Tab {
         //     let font_size = 15.0;
         //     let line_height = 1.1;
         //     let syntax_theme = highlighter::Theme::SolarizedDark;
+        let w = tab_widget(&self.editor);
 
         Scrollable::new(row![
-            tab_widget() //         // TODO
-                         //         // line_number(self.content.line_count(), font_size, line_height,),
-                         //         // text_editor(&self.content)
-                         //         //     .font(Font::MONOSPACE)
-                         //         //     .size(font_size)
-                         //         //     .line_height(line_height)
-                         //         //     .padding(Padding {
-                         //         //         top: 0.0,
-                         //         //         bottom: 0.0,
-                         //         //         left: 5.0,
-                         //         //         right: 0.0,
-                         //         //     })
-                         //         //     .highlight(
-                         //         //         self.file_path
-                         //         //             .as_deref()
-                         //         //             .and_then(path::Path::extension)
-                         //         //             .and_then(ffi::OsStr::to_str)
-                         //         //             .unwrap_or(""),
-                         //         //         syntax_theme,
-                         //         //     )
-                         //         //     .on_action(Message::Edit)
+            w,
+            //         // TODO
+            //         // line_number(self.content.line_count(), font_size, line_height,),
+            //         // text_editor(&self.content)
+            //         //     .font(Font::MONOSPACE)
+            //         //     .size(font_size)
+            //         //     .line_height(line_height)
+            //         //     .padding(Padding {
+            //         //         top: 0.0,
+            //         //         bottom: 0.0,
+            //         //         left: 5.0,
+            //         //         right: 0.0,
+            //         //     })
+            //         //     .highlight(
+            //         //         self.file_path
+            //         //             .as_deref()
+            //         //             .and_then(path::Path::extension)
+            //         //             .and_then(ffi::OsStr::to_str)
+            //         //             .unwrap_or(""),
+            //         //         syntax_theme,
+            //         //     )
+            //         //     .on_action(Message::Edit)
         ])
         .height(Length::Fill)
         .direction(scrollable::Direction::Vertical(

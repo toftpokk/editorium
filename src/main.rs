@@ -25,10 +25,8 @@ mod project;
 mod tab;
 
 static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
-// static SYNTAX_SYSTEM: LazyLock<RwLock<cosmic_text::SyntaxSystem>> =
-//     LazyLock::new(|| RwLock::new(cosmic_text::SyntaxSystem::new()));
 static SYNTAX_SYSTEM: OnceLock<cosmic_text::SyntaxSystem> = OnceLock::new();
-// cosmic_text::SyntaxSystem::new();
+static SWASH_CACHE: OnceLock<RwLock<cosmic_text::SwashCache>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -51,6 +49,7 @@ fn main() -> Result<(), iced::Error> {
     // FONT_SYSTEM = ;
     FONT_SYSTEM.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
     SYNTAX_SYSTEM.get_or_init(|| cosmic_text::SyntaxSystem::new());
+    SWASH_CACHE.get_or_init(|| RwLock::new(cosmic_text::SwashCache::new()));
 
     env_logger::init();
     iced::application("Editorium", App::update, App::view)

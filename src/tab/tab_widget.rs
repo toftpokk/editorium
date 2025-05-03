@@ -57,21 +57,39 @@
 //     }
 // }
 
-use iced::advanced::layout::{self, Layout};
-use iced::advanced::renderer;
-use iced::advanced::widget::{self, Widget};
-use iced::border::Radius;
-use iced::{Border, border};
-use iced::{Color, Element, Length, Rectangle, Size};
-use iced::{Shadow, mouse};
+use std::{sync::RwLock, u8};
 
-pub struct TabWidget {}
+// use cosmic_text::{Edit, SyntaxEditor};
+// // use iced::advanced::graphics::Image;
+// // use iced::advanced::graphics::text::editor;
+// use iced::advanced::layout::{self, Layout};
+// use iced::advanced::widget::{self, Widget};
+// use iced::advanced::{image, renderer};
+// use iced::border::Radius;
+// use iced::{Border, border};
+// use iced::{Color, Element, Length, Rectangle, Size};
+// use iced::{Shadow, mouse};
 
-pub fn tab_widget() -> TabWidget {
-    TabWidget {}
+use cosmic_text::SyntaxEditor;
+use iced::{
+    Element, Length, Rectangle, Size,
+    advanced::{Layout, Widget, image, layout, renderer, widget},
+};
+
+use crate::{FONT_SYSTEM, SWASH_CACHE};
+
+pub struct TabWidget<'a> {
+    editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
 }
 
-impl<Message, Theme, Renderer: renderer::Renderer> Widget<Message, Theme, Renderer> for TabWidget {
+pub fn tab_widget<'a>(editor: &'a RwLock<SyntaxEditor<'static, 'static>>) -> TabWidget<'a> {
+    TabWidget { editor }
+}
+
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for TabWidget<'a>
+where
+    Renderer: image::Renderer<Handle = image::Handle>,
+{
     fn size(&self) -> Size<Length> {
         Size {
             width: Length::Shrink,
@@ -97,25 +115,55 @@ impl<Message, Theme, Renderer: renderer::Renderer> Widget<Message, Theme, Render
         tree: &widget::Tree,
         renderer: &mut Renderer,
         theme: &Theme,
-        style: &renderer::Style,
+        style: &iced::advanced::renderer::Style,
         layout: Layout<'_>,
         cursor: iced::advanced::mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: layout.bounds(),
-                border: border::rounded(0.0),
-                ..renderer::Quad::default()
-            },
-            Color::BLACK,
-        );
+        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
+        let mut swash_cache = SWASH_CACHE.get().unwrap().write().unwrap();
+        let editor = self.editor.write().unwrap();
+
+        // editor.draw(&mut font_system, &mut swash_cache, |x, y, w, h, color| {
+        //     //
+        // });
+        let image_w = 500;
+        let image_h = 500;
+
+        let mut pixels_u8 = vec![u8::MAX; image_w as usize * image_h as usize * 4];
+
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 500.0,
+            height: 500.0,
+        };
+        // let handle = iced::advanced::image::Handle::from_rgba(image_w, image_h, pixels_u8);
+
+        let handle = image::Handle::from_rgba(image_w, image_h, pixels_u8);
+        let image = image::Image::from(&handle);
+
+        renderer.draw_image(image, bounds);
+        // renderer.draw_image(image, bounds);
+        // image::Renderer::draw_image(renderer, image, bounds);
+
+        // image::Renderer::draw_image(renderer, image, bounds);
+        // renderer.fill_quad(
+        //     renderer::Quad {
+        //         bounds: layout.bounds(),
+        //         border: border::rounded(0.0),
+        //         ..renderer::Quad::default()
+        //     },
+        //     Color::BLACK,
+        // );
     }
 }
-impl<'a, Message, Theme, Renderer: renderer::Renderer> From<TabWidget>
-    for Element<'a, Message, Theme, Renderer>
+
+impl<'a, Message, Theme, Renderer> From<TabWidget<'a>> for Element<'a, Message, Theme, Renderer>
+where
+    Renderer: image::Renderer<Handle = iced::advanced::image::Handle>,
 {
-    fn from(value: TabWidget) -> Self {
+    fn from(value: TabWidget<'a>) -> Self {
         Self::new(value)
     }
 }
