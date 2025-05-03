@@ -1,4 +1,10 @@
-use std::{collections::HashMap, fs, path::PathBuf, str::FromStr};
+use std::{
+    collections::HashMap,
+    fs,
+    path::PathBuf,
+    str::FromStr,
+    sync::{LazyLock, Once, OnceLock, RwLock},
+};
 
 use clap::Parser;
 use iced::{
@@ -18,6 +24,12 @@ mod key_binds;
 mod project;
 mod tab;
 
+static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
+// static SYNTAX_SYSTEM: LazyLock<RwLock<cosmic_text::SyntaxSystem>> =
+//     LazyLock::new(|| RwLock::new(cosmic_text::SyntaxSystem::new()));
+static SYNTAX_SYSTEM: OnceLock<cosmic_text::SyntaxSystem> = OnceLock::new();
+// cosmic_text::SyntaxSystem::new();
+
 #[derive(Debug, Clone)]
 enum Message {
     KeyPressed(keyboard::Modifiers, keyboard::Key),
@@ -35,6 +47,11 @@ enum Message {
 }
 
 fn main() -> Result<(), iced::Error> {
+    // SYNTAX_SYSTEM.get_or_init(f)
+    // FONT_SYSTEM = ;
+    FONT_SYSTEM.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
+    SYNTAX_SYSTEM.get_or_init(|| cosmic_text::SyntaxSystem::new());
+
     env_logger::init();
     iced::application("Editorium", App::update, App::view)
         .subscription(App::subscription)
@@ -130,14 +147,14 @@ impl App {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Edit(action) => match action {
-                text_editor::Action::Scroll { .. } => (),
-                _ => {
-                    if let Some(t) = self.tabs.get_current() {
-                        t.action(action);
-                    }
-                }
-            },
+            // Message::Edit(action) => match action {
+            //     text_editor::Action::Scroll { .. } => (),
+            //     _ => {
+            //         if let Some(t) = self.tabs.get_current() {
+            //             t.action(action);
+            //         }
+            //     }
+            // },
             Message::OpenFileSelector => {
                 if let Some(file_path) =
                     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
@@ -152,16 +169,22 @@ impl App {
                     self.open_project(dir_path)
                 }
             }
-            Message::TabSelected(tab) => self.tabs.select(tab),
+            Message::TabSelected(tab) => self.tabs.activate(tab),
             Message::OpenProject(project) => self.open_project(project),
             Message::OpenFile(file_path) => self.open_file(file_path),
             Message::SaveFile => {
-                if let Some(t) = self.tabs.get_current() {
-                    t.save()
-                }
+                if let Some(active) = self.tabs.active() {
+                    let tab = self.tabs.tab_mut(active).unwrap();
+                    tab.save();
+                };
             }
-            Message::TabCloseCurrent => self.tabs.close(self.tabs.get_active_pos()),
-            Message::TabClose(tab) => self.tabs.close(tab),
+            Message::TabCloseCurrent => {
+                let active = self.tabs.active().unwrap();
+                self.tabs.remove(active);
+            }
+            Message::TabClose(tab) => {
+                self.tabs.remove(tab);
+            }
             Message::KeyPressed(modifier, key) => {
                 if let Some(value) = self.key_binds.get(&key_binds::KeyBind {
                     modifiers: modifier,
@@ -295,14 +318,12 @@ impl App {
     }
 
     fn open_file(&mut self, file_path: PathBuf) {
-        if let Some(pos) = self.tabs.get_pos(&file_path) {
-            self.tabs.select(pos);
+        if let Some(pos) = self.tabs.position(file_path.clone()) {
+            self.tabs.activate(pos);
             return;
         }
-        let mut tab = tab::Tab::new();
-        tab.open(&file_path);
-        let idx = self.tabs.push(tab);
-        self.tabs.select(idx);
+        let index = self.tabs.insert(Some(file_path));
+        self.tabs.activate(index);
     }
 
     fn tree_open_dir(&mut self, path: PathBuf, pos: usize, indent: usize) {

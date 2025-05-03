@@ -1,124 +1,188 @@
+use std::cmp::min;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex, RwLock};
 use std::{ffi, fs, path};
 
 use cosmic_text::{
     Action, Attrs, Buffer, Edit, FontSystem, Metrics, Shaping, SyntaxEditor, SyntaxSystem,
 };
+use iced::futures::future::Lazy;
 use iced::futures::io;
 use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
 use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter};
 use iced_aw::TabBar;
 
-use crate::Message;
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM};
 
 // TODO: use viewer(model) instead of model.view()
 
-pub struct TabView<'a> {
-    active_pos: usize,
-    tabs: Vec<Tab<'a>>,
+pub struct TabView {
+    active: Option<usize>,
+    tabs: Vec<Tab>,
 }
 
 impl TabView {
     pub fn new() -> Self {
         Self {
-            active_pos: usize::default(),
+            active: None,
             tabs: Vec::new(),
         }
     }
 
-    pub fn push(&mut self, tab: Tab) -> usize {
+    pub fn insert(&mut self, path: Option<PathBuf>) -> usize {
+        let tab = Tab::new(path);
         self.tabs.push(tab);
-        self.tabs.len().saturating_add_signed(-1)
+        self.tabs.len() - 1
     }
 
-    pub fn get_pos(&self, file_path: &PathBuf) -> Option<usize> {
-        self.tabs.iter().position(|tab| {
-            if let Some(path) = tab.file_path.clone() {
-                path == *file_path
+    pub fn remove(&mut self, index: usize) {
+        // check tab exists
+        if let Some(tab) = self.tabs.get(index) {
+            tab
+        } else {
+            return;
+        };
+
+        self.tabs.remove(index);
+
+        // check tab is active
+        if let Some(active) = self.active {
+            if active == index {
+                // tab is active
+            } else {
+                return;
+            }
+        } else {
+            // no active tab
+            return;
+        };
+
+        if index > 0 {
+            self.active = Some(index - 1);
+        } else {
+            if self.tabs.len() > 0 {
+                self.active = Some(0)
+            } else {
+                self.active = None
+            }
+        }
+    }
+
+    pub fn activate(&mut self, index: usize) {
+        if let Some(_) = self.tabs.get(index) {
+            self.active = Some(index)
+        }
+    }
+
+    pub fn active(&self) -> Option<usize> {
+        self.active
+    }
+
+    pub fn tab(&self, index: usize) -> Option<&Tab> {
+        self.tabs.get(index)
+    }
+
+    pub fn tab_mut(&mut self, index: usize) -> Option<&mut Tab> {
+        self.tabs.get_mut(index)
+    }
+
+    pub fn position(&self, path: PathBuf) -> Option<usize> {
+        self.tabs.iter().position(|x| {
+            if let Some(x_path) = &x.file_path {
+                x_path == &path
             } else {
                 false
             }
         })
     }
 
-    pub fn select(&mut self, pos: usize) {
-        self.active_pos = pos
-    }
+    // pub fn push(&mut self, tab: Tab) -> usize {
+    //     self.tabs.push(tab);
+    //     self.tabs.len().saturating_add_signed(-1)
+    // }
+
+    // pub fn get_pos(&self, file_path: &PathBuf) -> Option<usize> {
+    //     self.tabs.iter().position(|tab| {
+    //         if let Some(path) = tab.file_path.clone() {
+    //             path == *file_path
+    //         } else {
+    //             false
+    //         }
+    //     })
+    // }
+
+    // pub fn select(&mut self, pos: usize) {
+    //     self.active_pos = pos
+    // }
 
     pub fn view(&self) -> Element<Message> {
-        let main = if let Some(tab) = self.tabs.get(self.active_pos) {
+        let main = if let Some(active) = self.active {
+            let tab = self.tabs.get(active).unwrap();
             tab.view()
         } else {
             scrollable(Row::new())
         };
 
-        Column::new()
-            .push(
-                self.tabs
-                    .iter()
-                    .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
-                        let idx = tab_bar.size();
-                        tab_bar.push(idx, iced_aw::TabLabel::Text(tab.name.to_owned()))
-                    })
-                    .on_close(Message::TabClose)
-                    .tab_width(Length::Shrink)
-                    .set_active_tab(&self.active_pos),
-            )
-            .push(main)
-            .into()
-    }
+        let mut tab_bar = self
+            .tabs
+            .iter()
+            .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
+                let idx = tab_bar.size();
+                tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
+            })
+            .on_close(Message::TabClose)
+            .tab_width(Length::Shrink);
 
-    pub fn close(&mut self, pos: usize) {
-        if let Some(_) = self.tabs.get(pos) {
-            self.tabs.remove(pos);
-            self.active_pos = pos.saturating_add_signed(-1);
+        if let Some(active) = self.active {
+            tab_bar = tab_bar.set_active_tab(&active);
         }
+
+        Column::new().push(tab_bar).push(main).into()
     }
 
-    pub fn get_active_pos(&self) -> usize {
-        self.active_pos
-    }
+    // pub fn close(&mut self, pos: usize) {
+    //     if let Some(_) = self.tabs.get(pos) {
+    //         self.tabs.remove(pos);
+    //         self.active_pos = pos.saturating_add_signed(-1);
+    //     }
+    // }
 
-    pub fn get_current(&mut self) -> Option<&mut Tab> {
-        self.tabs.get_mut(self.active_pos)
-    }
+    // pub fn get_active_pos(&self) -> usize {
+    //     self.active_pos
+    // }
+
+    // pub fn get_current(&mut self) -> Option<&mut Tab> {
+    //     self.tabs.get_mut(self.active_pos)
+    // }
 }
 
-pub struct Tab<'tab> {
-    pub name: String,
-    pub file_path: Option<path::PathBuf>,
-    pub file_name: Option<String>,
+pub struct Tab {
+    pub file_path: Option<PathBuf>,
 
-    // // font_system: &'tab mut FontSystem,
-    editor: SyntaxEditor<'static, 'tab>,
+    editor: SyntaxEditor<'static, 'static>,
     attrs: Attrs<'static>,
 }
 
-impl<'tab> Tab<'tab> {
-    pub fn new(syntax_system: &'tab SyntaxSystem, font_system: &'tab mut FontSystem) -> Self {
+impl Tab {
+    fn new(path: Option<PathBuf>) -> Self {
         let metrics = Metrics::new(14.0, 20.0);
-        let buffer = Buffer::new(font_system, metrics);
-        // let syntax_system = SyntaxSystem::new();
+        let buffer = Buffer::new_empty(metrics);
         let attrs = Attrs::new();
+        let syntax_system: &SyntaxSystem = SYNTAX_SYSTEM.get().unwrap();
+        let editor = SyntaxEditor::new(buffer, &syntax_system, "base16-mocha.dark").unwrap();
         Self {
-            name: "New Tab".to_owned(),
-            file_path: None,
-            file_name: None,
-            font_system,
-            editor: SyntaxEditor::new(buffer, syntax_system, "base16-mocha.dark").unwrap(),
+            file_path: path,
+            editor,
             attrs,
         }
     }
 
     pub fn open(&mut self, file_path: path::PathBuf) -> io::Result<()> {
+        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
         self.editor
-            .load_text(self.font_system, file_path.clone(), self.attrs.clone())?;
-        self.name = file_path
-            .file_name()
-            .expect("invalid file")
-            .to_str()
-            .expect("invalid file name")
-            .to_owned();
+            .borrow_with(&mut font_system)
+            .load_text(file_path.clone(), self.attrs.clone());
+        // self.name =
         Ok(())
     }
 
@@ -137,46 +201,46 @@ impl<'tab> Tab<'tab> {
         Ok(())
     }
 
-    pub fn action(&mut self, action: Action) {
-        match &action {
-            Action::Motion(_)
-            | Action::Escape
-            | Action::Click { .. }
-            | Action::DoubleClick { .. }
-            | Action::Drag { .. } => {}
-            _ => self.name = format!("{}*", self.get_title()),
-        }
-        // self.content.perform(action)
-        self.editor.action(self.font_system, action);
-    }
+    // // pub fn action(&mut self, action: Action) {
+    // //     match &action {
+    // //         Action::Motion(_)
+    // //         | Action::Escape
+    // //         | Action::Click { .. }
+    // //         | Action::DoubleClick { .. }
+    // //         | Action::Drag { .. } => {}
+    // //         _ => self.name = format!("{}*", self.get_title()),
+    // //     }
+    // //     // self.content.perform(action)
+    // //     self.editor.action(self.font_system, action);
+    // // }
 
     pub fn view(&self) -> Scrollable<Message> {
-        let font_size = 15.0;
-        let line_height = 1.1;
-        let syntax_theme = highlighter::Theme::SolarizedDark;
+        //     let font_size = 15.0;
+        //     let line_height = 1.1;
+        //     let syntax_theme = highlighter::Theme::SolarizedDark;
 
         Scrollable::new(row![
-            // TODO
-            // line_number(self.content.line_count(), font_size, line_height,),
-            // text_editor(&self.content)
-            //     .font(Font::MONOSPACE)
-            //     .size(font_size)
-            //     .line_height(line_height)
-            //     .padding(Padding {
-            //         top: 0.0,
-            //         bottom: 0.0,
-            //         left: 5.0,
-            //         right: 0.0,
-            //     })
-            //     .highlight(
-            //         self.file_path
-            //             .as_deref()
-            //             .and_then(path::Path::extension)
-            //             .and_then(ffi::OsStr::to_str)
-            //             .unwrap_or(""),
-            //         syntax_theme,
-            //     )
-            //     .on_action(Message::Edit)
+        //         // TODO
+        //         // line_number(self.content.line_count(), font_size, line_height,),
+        //         // text_editor(&self.content)
+        //         //     .font(Font::MONOSPACE)
+        //         //     .size(font_size)
+        //         //     .line_height(line_height)
+        //         //     .padding(Padding {
+        //         //         top: 0.0,
+        //         //         bottom: 0.0,
+        //         //         left: 5.0,
+        //         //         right: 0.0,
+        //         //     })
+        //         //     .highlight(
+        //         //         self.file_path
+        //         //             .as_deref()
+        //         //             .and_then(path::Path::extension)
+        //         //             .and_then(ffi::OsStr::to_str)
+        //         //             .unwrap_or(""),
+        //         //         syntax_theme,
+        //         //     )
+        //         //     .on_action(Message::Edit)
         ])
         .height(Length::Fill)
         .direction(scrollable::Direction::Vertical(
@@ -184,9 +248,13 @@ impl<'tab> Tab<'tab> {
         ))
     }
 
-    fn get_title(&self) -> String {
-        if let Some(file_name) = &self.file_name {
-            file_name.clone()
+    fn get_name(&self) -> String {
+        if let Some(path) = &self.file_path {
+            path.file_name()
+                .expect("invalid file name")
+                .to_str()
+                .expect("could not parse to string")
+                .to_owned()
         } else {
             "New Tab".into()
         }
