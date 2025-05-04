@@ -64,7 +64,11 @@ use cosmic_text::{
 };
 use iced::{
     Element, Event, Length, Rectangle, Size,
-    advanced::{Layout, Widget, graphics::core::event, image, layout, widget},
+    advanced::{
+        Layout, Widget,
+        graphics::core::{event, window},
+        image, layout, widget,
+    },
     event::Status,
     keyboard::{self, key::Named},
 };
@@ -354,13 +358,19 @@ where
         let mut font_system = font_system().write().expect("font system is not writable");
         let mut editor = self.editor.write().expect("editor is not writable");
 
-        let mut status = iced::event::Status::Ignored;
-
-        let binding = match event {
+        let binding = match event.clone() {
             iced::Event::Keyboard(event) => Binding::from_keyboard_event(event),
+            iced::Event::Window(window::Event::Focused) => {
+                // get last change if exists
+                // let change = editor.finish_change();
+                // // start new change
+                // editor.start_change();
+                None
+            }
             _ => None,
         };
 
+        // TODO move into big match
         if let Some(binding) = binding {
             match binding {
                 Binding::Enter => editor.action(&mut font_system, cosmic_text::Action::Enter),
@@ -492,10 +502,27 @@ where
                     }
                 }
             }
-            status = Status::Captured;
+            return Status::Captured;
         }
 
-        status
+        // TODO move into big match
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                key,
+                modifiers,
+                text,
+                ..
+            }) => {
+                if let Some(text) = text {
+                    if let Some(c) = text.chars().find(|c| !c.is_control()) {
+                        editor.insert_string(&c.to_string(), None);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        iced::event::Status::Ignored
     }
 }
 
