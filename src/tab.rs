@@ -3,6 +3,7 @@ use std::sync::RwLock;
 use std::{fs, io};
 
 use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
+use iced::advanced::graphics::text::{editor, font_system};
 use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
 use iced::{Alignment, Element, Font, Length, Padding, Pixels};
 use iced_aw::TabBar;
@@ -98,25 +99,6 @@ impl TabView {
         })
     }
 
-    // pub fn push(&mut self, tab: Tab) -> usize {
-    //     self.tabs.push(tab);
-    //     self.tabs.len().saturating_add_signed(-1)
-    // }
-
-    // pub fn get_pos(&self, file_path: &PathBuf) -> Option<usize> {
-    //     self.tabs.iter().position(|tab| {
-    //         if let Some(path) = tab.file_path.clone() {
-    //             path == *file_path
-    //         } else {
-    //             false
-    //         }
-    //     })
-    // }
-
-    // pub fn select(&mut self, pos: usize) {
-    //     self.active_pos = pos
-    // }
-
     pub fn view(&self) -> Element<Message> {
         let main = if let Some(active) = self.active {
             let tab = self.tabs.get(active).unwrap();
@@ -203,54 +185,18 @@ impl Tab {
         Ok(())
     }
 
-    // // pub fn action(&mut self, action: Action) {
-    // //     match &action {
-    // //         Action::Motion(_)
-    // //         | Action::Escape
-    // //         | Action::Click { .. }
-    // //         | Action::DoubleClick { .. }
-    // //         | Action::Drag { .. } => {}
-    // //         _ => self.name = format!("{}*", self.get_title()),
-    // //     }
-    // //     // self.content.perform(action)
-    // //     self.editor.action(self.font_system, action);
-    // // }
+    pub fn scroll(&mut self, scroll: f32) {
+        let mut editor = self.editor.write().unwrap();
+        editor.with_buffer_mut(|buffer| {
+            let mut current_scroll = buffer.scroll();
+            current_scroll.vertical += scroll;
+            buffer.set_scroll(current_scroll);
+        });
+    }
 
     pub fn view(&self) -> Column<Message> {
-        //     let font_size = 15.0;
-        //     let line_height = 1.1;
-        //     let syntax_theme = highlighter::Theme::SolarizedDark;
         let w = tab_widget(&self.editor, self.metrics);
         Column::new().push(w)
-
-        // Scrollable::new(row![
-        //     w,
-        //     //         // TODO
-        //     //         // line_number(self.content.line_count(), font_size, line_height,),
-        //     //         // text_editor(&self.content)
-        //     //         //     .font(Font::MONOSPACE)
-        //     //         //     .size(font_size)
-        //     //         //     .line_height(line_height)
-        //     //         //     .padding(Padding {
-        //     //         //         top: 0.0,
-        //     //         //         bottom: 0.0,
-        //     //         //         left: 5.0,
-        //     //         //         right: 0.0,
-        //     //         //     })
-        //     //         //     .highlight(
-        //     //         //         self.file_path
-        //     //         //             .as_deref()
-        //     //         //             .and_then(path::Path::extension)
-        //     //         //             .and_then(ffi::OsStr::to_str)
-        //     //         //             .unwrap_or(""),
-        //     //         //         syntax_theme,
-        //     //         //     )
-        //     //         //     .on_action(Message::Edit)
-        // ])
-        // .width(Length::Fill)
-        // .direction(scrollable::Direction::Horizontal(
-        //     scrollable::Scrollbar::default().scroller_width(0).width(0),
-        // ))
     }
 
     fn get_name(&self) -> String {

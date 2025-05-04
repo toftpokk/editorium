@@ -10,7 +10,7 @@ use clap::Parser;
 use iced::{
     Color, Element, Length, Subscription, Task, Theme,
     advanced::graphics::core::keyboard,
-    event,
+    event, time,
     widget::{
         Container, PaneGrid, button, column, container, pane_grid, pick_list, row, scrollable,
         text_editor,
@@ -51,6 +51,8 @@ enum Message {
     PaneResized(pane_grid::ResizeEvent),
     ProjectTreeSelect(usize),
     SaveFile,
+    AutoScroll,
+    SetAutoScroll(Option<f32>),
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -120,6 +122,7 @@ struct App {
     current_project: Option<project::Project>,
     key_binds: HashMap<key_binds::KeyBind, Message>,
     panes: pane_grid::State<Pane>,
+    auto_scroll: Option<f32>,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -144,6 +147,7 @@ impl App {
             current_project: None,
             key_binds: key_binds::default(),
             panes: create_pane(),
+            auto_scroll: None,
         };
 
         if let Some(path) = cli.path {
@@ -190,8 +194,9 @@ impl App {
                 };
             }
             Message::TabCloseCurrent => {
-                let active = self.tabs.active().unwrap();
-                self.tabs.remove(active);
+                if let Some(active) = self.tabs.active() {
+                    self.tabs.remove(active);
+                }
             }
             Message::TabClose(tab) => {
                 self.tabs.remove(tab);
@@ -240,6 +245,16 @@ impl App {
                     }
                 }
             }
+            Message::AutoScroll => {
+                if let Some(auto_scroll) = self.auto_scroll {
+                    if let Some(active) = self.tabs.active() {
+                        let tab = self.tabs.tab_mut(active).unwrap();
+
+                        tab.scroll(auto_scroll)
+                    }
+                }
+            }
+            Message::SetAutoScroll(auto_scroll) => self.auto_scroll = auto_scroll,
             #[allow(unreachable_patterns)]
             _ => {
                 todo!()
@@ -305,7 +320,7 @@ impl App {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        let subscriptions = vec![event::listen_with(|event, status, _| match event {
+        let mut subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
                 match status {
                     event::Status::Captured => None,
@@ -314,6 +329,12 @@ impl App {
             }
             _ => None,
         })];
+
+        if let Some(_) = self.auto_scroll {
+            subscriptions
+                .push(time::every(time::Duration::from_millis(10)).map(|_| Message::AutoScroll));
+        }
+
         Subscription::batch(subscriptions)
     }
 

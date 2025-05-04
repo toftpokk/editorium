@@ -74,13 +74,14 @@ use std::{
     time::{self, Instant},
 };
 
-use crate::{font_system, swash_cache};
+use crate::{Message, font_system, swash_cache};
 
 pub struct TabWidget<'a> {
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
     // time between clicks for ClickKind.
     click_timing: time::Duration,
+    auto_scroll: Option<(f32, (i32, i32))>,
 
     width: Length,
     height: Length,
@@ -95,6 +96,7 @@ pub fn tab_widget<'a>(
         editor,
         metrics,
         click_timing: time::Duration::from_millis(500),
+        auto_scroll: None,
 
         width: Length::Fill,
         height: Length::Fill,
@@ -127,7 +129,7 @@ impl State {
     }
 }
 
-impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for TabWidget<'a>
+impl<'a, Theme, Renderer> Widget<Message, Theme, Renderer> for TabWidget<'a>
 where
     Renderer:
         image::Renderer<Handle = image::Handle> + iced::advanced::text::Renderer<Font = iced::Font>,
@@ -400,7 +402,7 @@ where
         cursor: iced::advanced::mouse::Cursor,
         _renderer: &Renderer,
         clipboard: &mut dyn iced::advanced::Clipboard,
-        _shell: &mut iced::advanced::Shell<'_, Message>,
+        shell: &mut iced::advanced::Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> iced::event::Status {
         let state = tree.state.downcast_mut::<State>();
@@ -574,17 +576,9 @@ where
             }
             iced::Event::Mouse(event) => match event {
                 iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
-                    if let Some(pos) = cursor.position_in(layout.bounds()) {
-                        let x = pos.x - self.padding.left - gutter_width as f32;
-                        let y = pos.y - self.padding.top;
-
-                        println!(
-                            "x:{} bufx:{} y:{} bufy:{}",
-                            x,
-                            buffer_size.0.unwrap_or(0.0),
-                            y,
-                            buffer_size.1.unwrap_or(0.0)
-                        );
+                    if let Some(pos) = cursor.position() {
+                        let x = pos.x - layout.bounds().x - self.padding.left - gutter_width as f32;
+                        let y = pos.y - layout.bounds().y - self.padding.top;
 
                         // checks if x, y not in gutter
                         if x >= 0.0
@@ -640,12 +634,15 @@ where
                 iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) => {
                     state.dragging = false;
                     status = Status::Captured;
+                    self.auto_scroll = None;
+                    shell.publish(Message::SetAutoScroll(None));
                 }
                 iced::mouse::Event::CursorMoved { .. } => {
                     if state.dragging {
-                        if let Some(pos) = cursor.position_in(layout.bounds()) {
-                            let mut x = pos.x - self.padding.left - gutter_width as f32;
-                            let y = pos.y - self.padding.top;
+                        if let Some(pos) = cursor.position() {
+                            let x =
+                                pos.x - layout.bounds().x - self.padding.left - gutter_width as f32;
+                            let y = pos.y - layout.bounds().y - self.padding.top;
 
                             editor.action(
                                 &mut font_system,
@@ -654,6 +651,51 @@ where
                                     y: y as i32,
                                 },
                             );
+                            let auto_scroll = editor.with_buffer(|buffer| {
+                                //TODO: ideal auto scroll speed
+                                let speed = 1.01;
+                                if y < 0.0 {
+                                    Some(y * speed)
+                                } else if y > buffer.size().1.unwrap_or(0.0) {
+                                    Some((y - buffer.size().1.unwrap_or(0.0)) * speed)
+                                } else {
+                                    None
+                                }
+                            });
+                            shell.publish(Message::SetAutoScroll(auto_scroll));
+                        }
+                    }
+                }
+                // TODO scroll past editor bounds
+                iced::mouse::Event::WheelScrolled { delta } => {
+                    if let Some(_) = cursor.position_in(layout.bounds()) {
+                        match delta {
+                            iced::mouse::ScrollDelta::Lines { x: _, y } => {
+                                // method from iced text_editor
+                                let scroll_lines = if y.abs() > 0.0 {
+                                    y.signum() * -(y.abs() * 4.0).max(1.0)
+                                } else {
+                                    0.0
+                                };
+
+                                editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Scroll {
+                                        lines: scroll_lines as i32,
+                                    },
+                                );
+                            }
+                            iced::mouse::ScrollDelta::Pixels { x: _, y } => {
+                                // method from iced text_editor
+                                let scroll_lines = -y / 4.0;
+
+                                editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Scroll {
+                                        lines: scroll_lines as i32,
+                                    },
+                                );
+                            }
                         }
                     }
                 }
@@ -666,7 +708,7 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<TabWidget<'a>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Theme, Renderer> From<TabWidget<'a>> for Element<'a, Message, Theme, Renderer>
 where
     Renderer: image::Renderer<Handle = iced::advanced::image::Handle>
         + iced::advanced::text::Renderer<Font = iced::Font>,

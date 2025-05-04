@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 env_logger = "0.11.7"
-iced = { version = "0.13.1", features = ["highlighter", "image"] }
+iced = { version = "0.13.1", features = ["highlighter", "image", "tokio"] }
 iced_aw = "0.12.2"
 log = "0.4.27"
 rfd = "0.15.3"
