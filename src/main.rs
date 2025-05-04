@@ -181,7 +181,10 @@ impl App {
                     self.open_project(dir_path)
                 }
             }
-            Message::TabSelected(tab) => self.tabs.activate(tab),
+            Message::TabSelected(tab) => {
+                self.tabs.activate(tab);
+                self.update_tab();
+            }
             Message::OpenProject(project) => self.open_project(project),
             Message::OpenFile(file_path) => self.open_file(file_path),
             Message::SaveFile => {
@@ -196,10 +199,12 @@ impl App {
             Message::TabCloseCurrent => {
                 if let Some(active) = self.tabs.active() {
                     self.tabs.remove(active);
+                    self.update_tab();
                 }
             }
             Message::TabClose(tab) => {
                 self.tabs.remove(tab);
+                self.update_tab();
             }
             Message::KeyPressed(modifier, key) => {
                 if let Some(value) = self.key_binds.get(&key_binds::KeyBind {
@@ -353,6 +358,7 @@ impl App {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
         if let Some(pos) = self.tabs.position(file_path.clone()) {
             self.tabs.activate(pos);
+            self.update_tab();
             return;
         }
         let index = match self.tabs.insert(Some(file_path)) {
@@ -363,6 +369,14 @@ impl App {
             }
         };
         self.tabs.activate(index);
+        self.update_tab()
+    }
+
+    fn update_tab(&mut self) {
+        if let Some(active) = self.tabs.active() {
+            let tab = self.tabs.tab_mut(active).unwrap();
+            tab.redraw();
+        }
     }
 
     fn tree_open_dir(&mut self, path: PathBuf, pos: usize, indent: usize) {

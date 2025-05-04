@@ -68,7 +68,7 @@ use iced::{
     keyboard,
 };
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     cmp,
     sync::RwLock,
     time::{self, Instant},
@@ -117,6 +117,7 @@ struct State {
     // gutter_width set on first draw
     // is a Cell because written in draw
     gutter_width: Cell<i32>,
+    render_handle: RefCell<Option<image::Handle>>,
 }
 
 impl State {
@@ -125,6 +126,7 @@ impl State {
             dragging: false,
             click_last: None,
             gutter_width: Cell::new(0),
+            render_handle: RefCell::new(None),
         }
     }
 }
@@ -261,7 +263,7 @@ where
         editor.shape_as_needed(&mut font_system, true);
 
         let mut pixels_u8 = vec![0; image_w as usize * image_h as usize * 4];
-        {
+        if editor.redraw() {
             let pixels = unsafe {
                 std::slice::from_raw_parts_mut(
                     pixels_u8.as_mut_ptr() as *mut u32,
@@ -347,18 +349,26 @@ where
                     color,
                 );
             });
+
+            let handle = image::Handle::from_rgba(image_w as u32, image_h as u32, pixels_u8);
+
+            state.render_handle.replace(Some(handle));
+
+            editor.set_redraw(false);
         }
 
-        let size = Size::new(view_w as f32, view_h as f32);
-        let bounds = Rectangle::new(
-            layout.position() + [self.padding.left, self.padding.right].into(),
-            size,
-        );
+        if let Some(handle) = state.render_handle.borrow().as_ref() {
+            let size = Size::new(view_w as f32, view_h as f32);
 
-        let handle = image::Handle::from_rgba(image_w as u32, image_h as u32, pixels_u8);
-        let image = image::Image::from(&handle).filter_method(image::FilterMethod::Nearest);
+            let bounds = Rectangle::new(
+                layout.position() + [self.padding.left, self.padding.right].into(),
+                size,
+            );
 
-        renderer.draw_image(image, bounds);
+            let image = image::Image::from(handle).filter_method(image::FilterMethod::Nearest);
+
+            renderer.draw_image(image, bounds);
+        }
 
         // --- POC: font rendering with iced_font ----
         // Verdict: not possible because it renders once for all text, cannot use

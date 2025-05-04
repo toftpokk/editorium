@@ -199,6 +199,10 @@ impl Tab {
         Column::new().push(w)
     }
 
+    pub fn redraw(&self) {
+        self.editor.write().unwrap().set_redraw(true);
+    }
+
     fn get_name(&self) -> String {
         if let Some(path) = &self.file_path {
             path.file_name()
