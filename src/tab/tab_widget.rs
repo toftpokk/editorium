@@ -70,10 +70,15 @@ use std::{cmp, sync::RwLock};
 // use iced::{Color, Element, Length, Rectangle, Size};
 // use iced::{Shadow, mouse};
 
-use cosmic_text::{Attrs, AttrsList, BufferLine, Color, Edit, LineEnding, Metrics, SyntaxEditor};
+use cosmic_text::{
+    Attrs, AttrsList, BorrowedWithFontSystem, BufferLine, Color, Edit, LineEnding, Metrics, Motion,
+    SyntaxEditor,
+};
 use iced::{
     Element, Length, Rectangle, Size,
     advanced::{Layout, Widget, image, layout, widget},
+    event::Status,
+    keyboard::{Key, key::Named},
 };
 
 use crate::{FONT_SYSTEM, SWASH_CACHE};
@@ -293,6 +298,58 @@ where
         let image = image::Image::from(&handle).filter_method(image::FilterMethod::Nearest);
 
         renderer.draw_image(image, bounds);
+    }
+
+    fn on_event(
+        &mut self,
+        _state: &mut widget::Tree,
+        event: iced::Event,
+        _layout: Layout<'_>,
+        _cursor: iced::advanced::mouse::Cursor,
+        _renderer: &Renderer,
+        _clipboard: &mut dyn iced::advanced::Clipboard,
+        _shell: &mut iced::advanced::Shell<'_, Message>,
+        _viewport: &Rectangle,
+    ) -> iced::event::Status {
+        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
+
+        let editor = &mut self.editor.write().unwrap();
+
+        let mut status = iced::event::Status::Ignored;
+        fn action(
+            editor: &mut BorrowedWithFontSystem<'_, SyntaxEditor<'static, 'static>>,
+            motion: Motion,
+        ) {
+            editor.action(cosmic_text::Action::Motion(motion));
+        }
+
+        match event {
+            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                key: iced::keyboard::Key::Named(key),
+                ..
+            }) => match key {
+                Named::ArrowLeft => {
+                    action(&mut editor.borrow_with(&mut font_system), Motion::Left);
+                    status = Status::Captured;
+                }
+                Named::ArrowRight => {
+                    action(&mut editor.borrow_with(&mut font_system), Motion::Right);
+                    status = Status::Captured;
+                }
+                Named::ArrowUp => {
+                    action(&mut editor.borrow_with(&mut font_system), Motion::Up);
+                    status = Status::Captured;
+                }
+                Named::ArrowDown => {
+                    action(&mut editor.borrow_with(&mut font_system), Motion::Down);
+                    status = Status::Captured;
+                }
+                _ => (),
+            },
+            _ => (),
+        }
+
+        status
     }
 }
 
