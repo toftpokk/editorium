@@ -111,7 +111,7 @@ enum ClickKind {
 struct State {
     dragging: bool,
     // last click
-    click_last: Option<(ClickKind, time::Instant)>,
+    click_last: Option<(ClickKind, time::Instant, (f32, f32))>,
     // gutter_width set on first draw
     // is a Cell because written in draw
     gutter_width: Cell<i32>,
@@ -326,6 +326,7 @@ where
                 }
             });
 
+            let scroll_x = editor.with_buffer(|buffer| buffer.scroll().horizontal as i32);
             editor.draw(&mut font_system, &mut swash_cache, |x, y, w, h, color| {
                 draw_rect(
                     pixels,
@@ -338,7 +339,7 @@ where
                         h: h as i32,
                     },
                     Offset {
-                        x: x + gutter_width,
+                        x: x + gutter_width - scroll_x,
                         y,
                     },
                     color,
@@ -347,7 +348,10 @@ where
         }
 
         let size = Size::new(view_w as f32, view_h as f32);
-        let bounds = Rectangle::new(layout.position(), size);
+        let bounds = Rectangle::new(
+            layout.position() + [self.padding.left, self.padding.right].into(),
+            size,
+        );
 
         let handle = image::Handle::from_rgba(image_w as u32, image_h as u32, pixels_u8);
         let image = image::Image::from(&handle).filter_method(image::FilterMethod::Nearest);
@@ -407,7 +411,8 @@ where
         let (buffer_size, buffer_scroll) =
             editor.with_buffer(|buffer| (buffer.size(), buffer.scroll()));
 
-        let status: Status = match event {
+        let mut status = Status::Ignored;
+        match event {
             iced::Event::Keyboard(event) => {
                 if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
                     match binding {
@@ -550,20 +555,14 @@ where
                             }
                         }
                     }
-                    Status::Captured
+                    status = Status::Captured;
                 } else if let keyboard::Event::KeyPressed { text, .. } = event {
                     if let Some(text) = text {
                         if let Some(c) = text.chars().find(|c| !c.is_control()) {
                             editor.insert_string(&c.to_string(), None);
-                            Status::Captured
-                        } else {
-                            Status::Ignored
+                            status = Status::Captured
                         }
-                    } else {
-                        Status::Ignored
                     }
-                } else {
-                    Status::Ignored
                 }
             }
             iced::Event::Window(window::Event::Focused) => {
@@ -571,7 +570,7 @@ where
                 // let change = editor.finish_change();
                 // // start new change
                 // editor.start_change();
-                Status::Captured
+                status = Status::Captured
             }
             iced::Event::Mouse(event) => match event {
                 iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
@@ -587,14 +586,15 @@ where
                             buffer_size.1.unwrap_or(0.0)
                         );
 
+                        // checks if x, y not in gutter
                         if x >= 0.0
                             && x < buffer_size.0.unwrap_or(0.0)
                             && y >= 0.0
                             && y < buffer_size.1.unwrap_or(0.0)
                         {
                             // handle click kind
-                            let kind = if let Some((kind, timing)) = state.click_last.take() {
-                                if timing.elapsed() < self.click_timing {
+                            let kind = if let Some((kind, timing, at)) = state.click_last.take() {
+                                if timing.elapsed() < self.click_timing && x == at.0 && y == at.1 {
                                     match kind {
                                         // rotate between kinds
                                         ClickKind::Single => ClickKind::Double,
@@ -631,22 +631,38 @@ where
                                     },
                                 ),
                             }
-                            state.click_last = Some((kind, Instant::now()));
+                            state.click_last = Some((kind, Instant::now(), (x, y)));
                             state.dragging = true;
                         }
                     }
-                    Status::Captured
+                    status = Status::Captured;
                 }
                 iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) => {
                     state.dragging = false;
-                    Status::Captured
+                    status = Status::Captured;
                 }
-                _ => Status::Ignored,
+                iced::mouse::Event::CursorMoved { .. } => {
+                    if state.dragging {
+                        if let Some(pos) = cursor.position_in(layout.bounds()) {
+                            let mut x = pos.x - self.padding.left - gutter_width as f32;
+                            let y = pos.y - self.padding.top;
+
+                            editor.action(
+                                &mut font_system,
+                                cosmic_text::Action::Drag {
+                                    x: x as i32,
+                                    y: y as i32,
+                                },
+                            );
+                        }
+                    }
+                }
+                _ => {}
             },
-            _ => Status::Ignored,
+            _ => {}
         };
 
-        iced::event::Status::Ignored
+        status
     }
 }
 
