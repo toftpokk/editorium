@@ -59,29 +59,32 @@
 // }
 
 use cosmic_text::{
-    Attrs, AttrsList, BorrowedWithFontSystem, BufferLine, Color, Edit, LineEnding, Metrics, Motion,
-    SyntaxEditor,
+    Attrs, AttrsList, BufferLine, Color, Edit, LineEnding, Metrics, Motion, SyntaxEditor,
 };
 use iced::{
-    Element, Event, Length, Rectangle, Size,
-    advanced::{
-        Layout, Widget,
-        graphics::core::{event, window},
-        image, layout, widget,
-    },
+    Element, Length, Padding, Rectangle, Size,
+    advanced::{Layout, Widget, graphics::core::window, image, layout, widget},
     event::Status,
-    keyboard::{self, key::Named},
+    keyboard,
 };
-use std::{cmp, sync::RwLock};
+use std::{
+    cell::Cell,
+    cmp,
+    sync::RwLock,
+    time::{self, Instant},
+};
 
 use crate::{font_system, swash_cache};
 
 pub struct TabWidget<'a> {
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
+    // time between clicks for ClickKind.
+    click_timing: time::Duration,
 
     width: Length,
     height: Length,
+    padding: Padding,
 }
 
 pub fn tab_widget<'a>(
@@ -91,9 +94,36 @@ pub fn tab_widget<'a>(
     TabWidget {
         editor,
         metrics,
+        click_timing: time::Duration::from_millis(500),
 
         width: Length::Fill,
         height: Length::Fill,
+        padding: Padding::new(5.0),
+    }
+}
+
+enum ClickKind {
+    Single,
+    Double,
+    Triple,
+}
+
+struct State {
+    dragging: bool,
+    // last click
+    click_last: Option<(ClickKind, time::Instant)>,
+    // gutter_width set on first draw
+    // is a Cell because written in draw
+    gutter_width: Cell<i32>,
+}
+
+impl State {
+    fn new() -> Self {
+        Self {
+            dragging: false,
+            click_last: None,
+            gutter_width: Cell::new(0),
+        }
     }
 }
 
@@ -107,6 +137,10 @@ where
             width: self.width,
             height: self.height,
         }
+    }
+
+    fn state(&self) -> widget::tree::State {
+        widget::tree::State::new(State::new())
     }
 
     fn layout(
@@ -142,7 +176,7 @@ where
                     limits
                         .height(min_bounds.height)
                         .max()
-                        .expand(Size::new(0.0, 0.0)),
+                        .expand(Size::new(0.0, self.padding.vertical())),
                 )
             }
         }
@@ -158,25 +192,22 @@ where
         cursor: iced::advanced::mouse::Cursor,
         viewport: &Rectangle,
     ) {
+        let state = tree.state.downcast_ref::<State>();
+
         let mut font_system = font_system().write().expect("font system not writable");
         let mut swash_cache = swash_cache().write().expect("swash cache not writable");
         let mut editor = self.editor.write().expect("editor not writable");
 
-        let view_w = cmp::min(viewport.width as i32, layout.bounds().width as i32);
-        // - self.padding.horizontal() as i32
+        let view_w = cmp::min(viewport.width as i32, layout.bounds().width as i32)
+            - self.padding.horizontal() as i32;
         // - scrollbar_w;
         let view_h = cmp::min(viewport.height as i32, layout.bounds().height as i32);
-        // - self.padding.vertical() as i32;
+        -self.padding.vertical() as i32;
 
-        let image_w = view_w as u32;
-        let image_h = view_h as u32;
+        let image_w = view_w as i32;
+        let image_h = view_h as i32;
         // let image_w: u32 = 500;
         // let image_h: u32 = 500;
-
-        // set metrics to buffer
-        editor.with_buffer_mut(|buffer| {
-            buffer.set_metrics(&mut font_system, self.metrics);
-        });
 
         // gutter shifting
         let mut line_count = editor.with_buffer(|buffer| buffer.lines.len());
@@ -210,6 +241,19 @@ where
             let line_number_width = layout_line.w * self.metrics.font_size;
             (line_number_width + 8.0).ceil() as i32
         };
+
+        state.gutter_width.replace(gutter_width);
+        // TODO editor selective redraw
+
+        // set metrics to buffer & set size of buffer (for mouse)
+        editor.with_buffer_mut(|buffer| {
+            buffer.set_metrics_and_size(
+                &mut font_system,
+                self.metrics,
+                Some((image_w - gutter_width) as f32),
+                Some(image_h as f32),
+            );
+        });
 
         // shape only necessary lines
         editor.shape_as_needed(&mut font_system, true);
@@ -305,7 +349,7 @@ where
         let size = Size::new(view_w as f32, view_h as f32);
         let bounds = Rectangle::new(layout.position(), size);
 
-        let handle = image::Handle::from_rgba(image_w, image_h, pixels_u8);
+        let handle = image::Handle::from_rgba(image_w as u32, image_h as u32, pixels_u8);
         let image = image::Image::from(&handle).filter_method(image::FilterMethod::Nearest);
 
         renderer.draw_image(image, bounds);
@@ -346,181 +390,261 @@ where
 
     fn on_event(
         &mut self,
-        _state: &mut widget::Tree,
+        tree: &mut widget::Tree,
         event: iced::Event,
-        _layout: Layout<'_>,
-        _cursor: iced::advanced::mouse::Cursor,
+        layout: Layout<'_>,
+        cursor: iced::advanced::mouse::Cursor,
         _renderer: &Renderer,
         clipboard: &mut dyn iced::advanced::Clipboard,
         _shell: &mut iced::advanced::Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> iced::event::Status {
+        let state = tree.state.downcast_mut::<State>();
+        let gutter_width = state.gutter_width.get();
+
         let mut font_system = font_system().write().expect("font system is not writable");
         let mut editor = self.editor.write().expect("editor is not writable");
+        let (buffer_size, buffer_scroll) =
+            editor.with_buffer(|buffer| (buffer.size(), buffer.scroll()));
 
-        let binding = match event.clone() {
-            iced::Event::Keyboard(event) => Binding::from_keyboard_event(event),
+        let status: Status = match event {
+            iced::Event::Keyboard(event) => {
+                if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
+                    match binding {
+                        Binding::Enter => {
+                            editor.action(&mut font_system, cosmic_text::Action::Enter)
+                        }
+                        Binding::Backspace => {
+                            editor.action(&mut font_system, cosmic_text::Action::Backspace)
+                        }
+                        Binding::Delete => {
+                            editor.action(&mut font_system, cosmic_text::Action::Delete)
+                        }
+                        Binding::BackspaceWord => {
+                            if editor.selection_bounds().is_some() {
+                                editor.delete_selection();
+                            } else {
+                                let cursor_start = editor.cursor();
+                                editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Motion(cosmic_text::Motion::LeftWord),
+                                );
+                                let cursor_end = editor.cursor();
+                                editor.delete_range(cursor_end, cursor_start);
+                                editor.set_cursor(cursor_end);
+                            }
+                        }
+                        Binding::DeleteWord => {
+                            if editor.selection_bounds().is_some() {
+                                editor.delete_selection();
+                            } else {
+                                let cursor_start = editor.cursor();
+                                editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Motion(cosmic_text::Motion::RightWord),
+                                );
+                                let cursor_end = editor.cursor();
+                                editor.delete_range(cursor_start, cursor_end);
+                                editor.set_cursor(cursor_start);
+                            }
+                        }
+                        Binding::Copy => {
+                            if let Some(selection) = editor.copy_selection() {
+                                clipboard
+                                    .write(iced::advanced::clipboard::Kind::Standard, selection);
+                            }
+                        }
+                        Binding::Cut => {
+                            if let Some(content) = editor.copy_selection() {
+                                clipboard.write(iced::advanced::clipboard::Kind::Standard, content);
+                                editor.action(&mut font_system, cosmic_text::Action::Delete);
+                            }
+                        }
+                        Binding::Paste => {
+                            if let Some(content) =
+                                clipboard.read(iced::advanced::clipboard::Kind::Standard)
+                            {
+                                editor.insert_string(&content, None);
+                            }
+                        }
+                        Binding::Move(binding_motion) => {
+                            if let Some((start, end)) = editor.selection_bounds() {
+                                editor.set_selection(cosmic_text::Selection::None);
+
+                                match binding_motion {
+                                    // just move cursor
+                                    BindingMotion::Home
+                                    | BindingMotion::End
+                                    | BindingMotion::DocumentStart
+                                    | BindingMotion::DocumentEnd => editor.action(
+                                        &mut font_system,
+                                        cosmic_text::Action::Motion(
+                                            binding_motion.to_cosmic_motion(),
+                                        ),
+                                    ),
+
+                                    // set cursor to start/end of selection
+                                    BindingMotion::Left
+                                    | BindingMotion::Up
+                                    | BindingMotion::WordLeft
+                                    | BindingMotion::PageUp => editor.set_cursor(start),
+
+                                    BindingMotion::Right
+                                    | BindingMotion::Down
+                                    | BindingMotion::PageDown
+                                    | BindingMotion::WordRight => editor.set_cursor(end),
+                                }
+                            } else {
+                                editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Motion(binding_motion.to_cosmic_motion()),
+                                )
+                            }
+                        }
+                        Binding::Select(binding_motion) => {
+                            let cursor = editor.cursor();
+
+                            if editor.selection_bounds().is_none() {
+                                editor.set_selection(cosmic_text::Selection::Normal(cursor));
+                            }
+
+                            editor.action(
+                                &mut font_system,
+                                cosmic_text::Action::Motion(binding_motion.to_cosmic_motion()),
+                            );
+
+                            // deselect if go back to same position
+                            if let Some((start, end)) = editor.selection_bounds() {
+                                if start.line == end.line && start.index == end.index {
+                                    editor.set_selection(cosmic_text::Selection::None);
+                                }
+                            }
+                        }
+                        Binding::Unfocus => {
+                            editor.set_selection(cosmic_text::Selection::None);
+                        }
+                        Binding::SelectAll => {
+                            let has_content = editor.with_buffer(|buffer| {
+                                // buffer has content
+                                buffer.lines.len() > 1
+                                    || buffer
+                                        .lines
+                                        .first()
+                                        .is_some_and(|line| !line.text().is_empty())
+                            });
+
+                            if has_content {
+                                let cursor = editor.cursor();
+                                editor.set_selection(cosmic_text::Selection::Normal(
+                                    cosmic_text::Cursor {
+                                        line: 0,
+                                        index: 0,
+                                        ..cursor
+                                    },
+                                ));
+
+                                editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Motion(cosmic_text::Motion::BufferEnd),
+                                );
+                            }
+                        }
+                    }
+                    Status::Captured
+                } else if let keyboard::Event::KeyPressed { text, .. } = event {
+                    if let Some(text) = text {
+                        if let Some(c) = text.chars().find(|c| !c.is_control()) {
+                            editor.insert_string(&c.to_string(), None);
+                            Status::Captured
+                        } else {
+                            Status::Ignored
+                        }
+                    } else {
+                        Status::Ignored
+                    }
+                } else {
+                    Status::Ignored
+                }
+            }
             iced::Event::Window(window::Event::Focused) => {
                 // get last change if exists
                 // let change = editor.finish_change();
                 // // start new change
                 // editor.start_change();
-                None
+                Status::Captured
             }
-            _ => None,
+            iced::Event::Mouse(event) => match event {
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
+                    if let Some(pos) = cursor.position_in(layout.bounds()) {
+                        let x = pos.x - self.padding.left - gutter_width as f32;
+                        let y = pos.y - self.padding.top;
+
+                        println!(
+                            "x:{} bufx:{} y:{} bufy:{}",
+                            x,
+                            buffer_size.0.unwrap_or(0.0),
+                            y,
+                            buffer_size.1.unwrap_or(0.0)
+                        );
+
+                        if x >= 0.0
+                            && x < buffer_size.0.unwrap_or(0.0)
+                            && y >= 0.0
+                            && y < buffer_size.1.unwrap_or(0.0)
+                        {
+                            // handle click kind
+                            let kind = if let Some((kind, timing)) = state.click_last.take() {
+                                if timing.elapsed() < self.click_timing {
+                                    match kind {
+                                        // rotate between kinds
+                                        ClickKind::Single => ClickKind::Double,
+                                        ClickKind::Double => ClickKind::Triple,
+                                        ClickKind::Triple => ClickKind::Single,
+                                    }
+                                } else {
+                                    ClickKind::Single
+                                }
+                            } else {
+                                ClickKind::Single
+                            };
+
+                            match kind {
+                                ClickKind::Single => editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Click {
+                                        x: x as i32,
+                                        y: y as i32,
+                                    },
+                                ),
+                                ClickKind::Double => editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::DoubleClick {
+                                        x: x as i32,
+                                        y: y as i32,
+                                    },
+                                ),
+                                ClickKind::Triple => editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::TripleClick {
+                                        x: x as i32,
+                                        y: y as i32,
+                                    },
+                                ),
+                            }
+                            state.click_last = Some((kind, Instant::now()));
+                            state.dragging = true;
+                        }
+                    }
+                    Status::Captured
+                }
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) => {
+                    state.dragging = false;
+                    Status::Captured
+                }
+                _ => Status::Ignored,
+            },
+            _ => Status::Ignored,
         };
-
-        // TODO move into big match
-        if let Some(binding) = binding {
-            match binding {
-                Binding::Enter => editor.action(&mut font_system, cosmic_text::Action::Enter),
-                Binding::Backspace => {
-                    editor.action(&mut font_system, cosmic_text::Action::Backspace)
-                }
-                Binding::Delete => editor.action(&mut font_system, cosmic_text::Action::Delete),
-                Binding::BackspaceWord => {
-                    if editor.selection_bounds().is_some() {
-                        editor.delete_selection();
-                    } else {
-                        let cursor_start = editor.cursor();
-                        editor.action(
-                            &mut font_system,
-                            cosmic_text::Action::Motion(cosmic_text::Motion::LeftWord),
-                        );
-                        let cursor_end = editor.cursor();
-                        editor.delete_range(cursor_end, cursor_start);
-                        editor.set_cursor(cursor_end);
-                    }
-                }
-                Binding::DeleteWord => {
-                    if editor.selection_bounds().is_some() {
-                        editor.delete_selection();
-                    } else {
-                        let cursor_start = editor.cursor();
-                        editor.action(
-                            &mut font_system,
-                            cosmic_text::Action::Motion(cosmic_text::Motion::RightWord),
-                        );
-                        let cursor_end = editor.cursor();
-                        editor.delete_range(cursor_start, cursor_end);
-                        editor.set_cursor(cursor_start);
-                    }
-                }
-                Binding::Copy => {
-                    if let Some(selection) = editor.copy_selection() {
-                        clipboard.write(iced::advanced::clipboard::Kind::Standard, selection);
-                    }
-                }
-                Binding::Cut => {
-                    if let Some(content) = editor.copy_selection() {
-                        clipboard.write(iced::advanced::clipboard::Kind::Standard, content);
-                        editor.action(&mut font_system, cosmic_text::Action::Delete);
-                    }
-                }
-                Binding::Paste => {
-                    if let Some(content) = clipboard.read(iced::advanced::clipboard::Kind::Standard)
-                    {
-                        editor.insert_string(&content, None);
-                    }
-                }
-                Binding::Move(binding_motion) => {
-                    if let Some((start, end)) = editor.selection_bounds() {
-                        editor.set_selection(cosmic_text::Selection::None);
-
-                        match binding_motion {
-                            // just move cursor
-                            BindingMotion::Home
-                            | BindingMotion::End
-                            | BindingMotion::DocumentStart
-                            | BindingMotion::DocumentEnd => editor.action(
-                                &mut font_system,
-                                cosmic_text::Action::Motion(binding_motion.to_cosmic_motion()),
-                            ),
-
-                            // set cursor to start/end of selection
-                            BindingMotion::Left
-                            | BindingMotion::Up
-                            | BindingMotion::WordLeft
-                            | BindingMotion::PageUp => editor.set_cursor(start),
-
-                            BindingMotion::Right
-                            | BindingMotion::Down
-                            | BindingMotion::PageDown
-                            | BindingMotion::WordRight => editor.set_cursor(end),
-                        }
-                    } else {
-                        editor.action(
-                            &mut font_system,
-                            cosmic_text::Action::Motion(binding_motion.to_cosmic_motion()),
-                        )
-                    }
-                }
-                Binding::Select(binding_motion) => {
-                    let cursor = editor.cursor();
-
-                    if editor.selection_bounds().is_none() {
-                        editor.set_selection(cosmic_text::Selection::Normal(cursor));
-                    }
-
-                    editor.action(
-                        &mut font_system,
-                        cosmic_text::Action::Motion(binding_motion.to_cosmic_motion()),
-                    );
-
-                    // deselect if go back to same position
-                    if let Some((start, end)) = editor.selection_bounds() {
-                        if start.line == end.line && start.index == end.index {
-                            editor.set_selection(cosmic_text::Selection::None);
-                        }
-                    }
-                }
-                Binding::Unfocus => {
-                    editor.set_selection(cosmic_text::Selection::None);
-                }
-                Binding::SelectAll => {
-                    let has_content = editor.with_buffer(|buffer| {
-                        // buffer has content
-                        buffer.lines.len() > 1
-                            || buffer
-                                .lines
-                                .first()
-                                .is_some_and(|line| !line.text().is_empty())
-                    });
-
-                    if has_content {
-                        let cursor = editor.cursor();
-                        editor.set_selection(cosmic_text::Selection::Normal(cosmic_text::Cursor {
-                            line: 0,
-                            index: 0,
-                            ..cursor
-                        }));
-
-                        editor.action(
-                            &mut font_system,
-                            cosmic_text::Action::Motion(cosmic_text::Motion::BufferEnd),
-                        );
-                    }
-                }
-            }
-            return Status::Captured;
-        }
-
-        // TODO move into big match
-        match event {
-            iced::Event::Keyboard(keyboard::Event::KeyPressed {
-                key,
-                modifiers,
-                text,
-                ..
-            }) => {
-                if let Some(text) = text {
-                    if let Some(c) = text.chars().find(|c| !c.is_control()) {
-                        editor.insert_string(&c.to_string(), None);
-                    }
-                }
-            }
-            _ => {}
-        }
 
         iced::event::Status::Ignored
     }
