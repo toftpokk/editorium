@@ -12,6 +12,7 @@ use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM};
 
 mod tab_widget;
 
+// TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
 
 pub struct TabView {
