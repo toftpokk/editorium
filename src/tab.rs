@@ -1,13 +1,15 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{ffi, fs, path};
 
+use iced::keyboard::Modifiers;
 use iced::widget::{
     Column, Row, Scrollable, column, container, row, scrollable, text, text_editor,
 };
-use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter};
+use iced::{Alignment, Element, Font, Length, Padding, Pixels, highlighter, keyboard};
 use iced_aw::TabBar;
 
-use crate::Message;
+use crate::{KEY_BINDINGS, Message};
 
 pub struct TabView {
     active_pos: usize,
@@ -175,6 +177,18 @@ impl Tab {
                         .unwrap_or(""),
                     syntax_theme,
                 )
+                .key_binding(|keypress| {
+                    if let Some(message) =
+                        KEY_BINDINGS.get().unwrap().get(&crate::key_binds::KeyBind {
+                            modifiers: keypress.modifiers.clone(),
+                            key: keypress.key.clone(),
+                        })
+                    {
+                        Some(text_editor::Binding::Custom(message.clone()))
+                    } else {
+                        text_editor::Binding::from_key_press(keypress)
+                    }
+                })
                 .wrapping(text::Wrapping::None)
                 .on_action(Message::Edit)
         ])

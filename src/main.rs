@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, fs, path::PathBuf, str::FromStr, sync::OnceLock};
 
 use clap::Parser;
 use iced::{
@@ -11,6 +11,7 @@ use iced::{
     },
 };
 use iced_aw::iced_fonts;
+use key_binds::KeyBind;
 use rfd::FileDialog;
 
 mod cli;
@@ -33,6 +34,8 @@ enum Message {
     ProjectTreeSelect(usize),
     SaveFile,
 }
+
+static KEY_BINDINGS: OnceLock<HashMap<KeyBind, Message>> = OnceLock::new();
 
 fn main() -> Result<(), iced::Error> {
     env_logger::init();
@@ -93,7 +96,6 @@ struct App {
     tabs: tab::TabView,
     project_tree: project::ProjectTree,
     current_project: Option<project::Project>,
-    key_binds: HashMap<key_binds::KeyBind, Message>,
     panes: pane_grid::State<Pane>,
 }
 
@@ -113,11 +115,12 @@ impl App {
     fn new() -> (Self, Task<Message>) {
         let cli = cli::Cli::parse();
 
+        KEY_BINDINGS.get_or_init(|| key_binds::default());
+
         let mut app = Self {
             tabs: tab::TabView::new(),
             project_tree: project::ProjectTree::new(),
             current_project: None,
-            key_binds: key_binds::default(),
             panes: create_pane(),
         };
 
@@ -163,7 +166,7 @@ impl App {
             Message::TabCloseCurrent => self.tabs.close(self.tabs.get_active_pos()),
             Message::TabClose(tab) => self.tabs.close(tab),
             Message::KeyPressed(modifier, key) => {
-                if let Some(value) = self.key_binds.get(&key_binds::KeyBind {
+                if let Some(value) = KEY_BINDINGS.get().unwrap().get(&key_binds::KeyBind {
                     modifiers: modifier,
                     key: key,
                 }) {
@@ -273,6 +276,7 @@ impl App {
     fn subscription(&self) -> Subscription<Message> {
         let subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
+                print!("{:?} {:?} {:?}\n", modifiers, key, status);
                 match status {
                     event::Status::Captured => None,
                     event::Status::Ignored => Some(Message::KeyPressed(modifiers, key)),
