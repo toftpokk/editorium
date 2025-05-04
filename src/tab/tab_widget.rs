@@ -70,7 +70,7 @@ use std::{cmp, sync::RwLock};
 // use iced::{Color, Element, Length, Rectangle, Size};
 // use iced::{Shadow, mouse};
 
-use cosmic_text::{Attrs, AttrsList, BufferLine, Color, Edit, LineEnding, SyntaxEditor};
+use cosmic_text::{Attrs, AttrsList, BufferLine, Color, Edit, LineEnding, Metrics, SyntaxEditor};
 use iced::{
     Element, Length, Rectangle, Size,
     advanced::{Layout, Widget, image, layout, widget},
@@ -80,10 +80,14 @@ use crate::{FONT_SYSTEM, SWASH_CACHE};
 
 pub struct TabWidget<'a> {
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
+    metrics: Metrics,
 }
 
-pub fn tab_widget<'a>(editor: &'a RwLock<SyntaxEditor<'static, 'static>>) -> TabWidget<'a> {
-    TabWidget { editor }
+pub fn tab_widget<'a>(
+    editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
+    metrics: Metrics,
+) -> TabWidget<'a> {
+    TabWidget { editor, metrics }
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for TabWidget<'a>
@@ -110,7 +114,7 @@ where
         // FIXME should editor be written during layout?
         let editor = &mut self.editor.write().unwrap();
 
-        editor.borrow_with(&mut font_system).shape_as_needed(true); // FIXME Scroll
+        editor.shape_as_needed(&mut font_system, true); // FIXME Scroll
 
         editor.with_buffer(|buffer| {
             let mut lines = 0;
@@ -152,6 +156,46 @@ where
         let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
         let mut swash_cache = SWASH_CACHE.get().unwrap().write().unwrap();
         let mut editor = self.editor.write().unwrap();
+
+        // set metrics to buffer
+        editor.with_buffer_mut(|buffer| {
+            buffer.set_metrics(&mut font_system, self.metrics);
+        });
+
+        // gutter shifting
+        let mut line_count = editor.with_buffer(|buffer| buffer.lines.len());
+        let mut line_number_chars = 1;
+        while line_count >= 10 {
+            line_count /= 10;
+            line_number_chars += 1;
+        }
+
+        let gutter_width = {
+            let text = format!("{:>line_number_chars$}", 1);
+
+            let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
+            let mut buffer_line = BufferLine::new(
+                text,
+                LineEnding::default(),
+                AttrsList::new(&attrs),
+                cosmic_text::Shaping::Advanced,
+            );
+            let layout = buffer_line.layout(
+                &mut font_system,
+                1.0,
+                None,
+                cosmic_text::Wrap::None,
+                None,
+                8,
+            );
+
+            let layout_line = &layout[0];
+
+            let line_number_width = layout_line.w * self.metrics.font_size;
+            (line_number_width + 8.0).ceil() as i32
+        };
+
+        // shape only necessary lines
         editor.shape_as_needed(&mut font_system, true);
 
         let mut pixels_u8 = vec![0; image_w as usize * image_h as usize * 4];
@@ -165,10 +209,10 @@ where
 
             editor.with_buffer(|buffer| {
                 for run in buffer.layout_runs() {
-                    let line_number = run.line_i;
+                    let line_number = run.line_i.saturating_add(1);
 
                     let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
-                    let text = format!("{}", line_number);
+                    let text = format!("{:>line_number_chars$}", line_number);
                     let mut buffer_line = BufferLine::new(
                         text,
                         LineEnding::default(),
@@ -184,13 +228,24 @@ where
                         8,
                     );
 
-                    for glyph in layout[0].glyphs.to_vec() {
-                        let physical_glyph = glyph.physical((0.0, run.line_top), 20.0);
+                    let layout_line = &layout[0];
+
+                    // scaling layout_line to fit metrics font size
+                    let max_ascent = layout_line.max_ascent * self.metrics.font_size;
+                    let max_descent = layout_line.max_descent * self.metrics.font_size;
+
+                    // getting line y offset compared to glyph
+                    let glyph_height = max_ascent + max_descent;
+                    let centering_offset = (self.metrics.line_height - glyph_height) / 2.0;
+                    let line_y = run.line_top + centering_offset + max_ascent;
+
+                    for glyph in layout_line.glyphs.to_vec() {
+                        let physical_glyph = glyph.physical((0.0, line_y), self.metrics.font_size);
 
                         swash_cache.with_pixels(
                             &mut font_system,
                             physical_glyph.cache_key,
-                            Color::rgb(255, 0, 0),
+                            Color::rgb(0, 0, 0),
                             |x, y, color| {
                                 draw_rect(
                                     pixels,
@@ -222,7 +277,10 @@ where
                         w: w as i32,
                         h: h as i32,
                     },
-                    Offset { x, y },
+                    Offset {
+                        x: x + gutter_width,
+                        y,
+                    },
                     color,
                 );
             });
@@ -235,18 +293,6 @@ where
         let image = image::Image::from(&handle).filter_method(image::FilterMethod::Nearest);
 
         renderer.draw_image(image, bounds);
-        // renderer.draw_image(image, bounds);
-        // image::Renderer::draw_image(renderer, image, bounds);
-
-        // image::Renderer::draw_image(renderer, image, bounds);
-        // renderer.fill_quad(
-        //     renderer::Quad {
-        //         bounds: layout.bounds(),
-        //         border: border::rounded(0.0),
-        //         ..renderer::Quad::default()
-        //     },
-        //     Color::BLACK,
-        // );
     }
 }
 

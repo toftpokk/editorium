@@ -219,7 +219,7 @@ impl Tab {
         //     let font_size = 15.0;
         //     let line_height = 1.1;
         //     let syntax_theme = highlighter::Theme::SolarizedDark;
-        let w = tab_widget(&self.editor);
+        let w = tab_widget(&self.editor, self.metrics);
         Column::new().push(w)
 
         // Scrollable::new(row![
