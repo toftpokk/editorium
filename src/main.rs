@@ -24,9 +24,18 @@ mod key_binds;
 mod project;
 mod tab;
 
+// TODO move
 static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
 static SYNTAX_SYSTEM: OnceLock<cosmic_text::SyntaxSystem> = OnceLock::new();
 static SWASH_CACHE: OnceLock<RwLock<cosmic_text::SwashCache>> = OnceLock::new();
+
+fn font_system() -> &'static RwLock<cosmic_text::FontSystem> {
+    FONT_SYSTEM.get().unwrap()
+}
+
+fn swash_cache() -> &'static RwLock<cosmic_text::SwashCache> {
+    SWASH_CACHE.get().unwrap()
+}
 
 #[derive(Debug, Clone)]
 enum Message {

@@ -1,4 +1,5 @@
 // // TODO rename Tab -> Textbox
+// copied & inspired by cosmic-text, cosmic-edit, iced text-editor
 
 // use std::fmt::Debug;
 
@@ -57,19 +58,6 @@
 //     }
 // }
 
-use std::{cmp, sync::RwLock};
-
-// use cosmic_text::{Edit, SyntaxEditor};
-// // use iced::advanced::graphics::Image;
-// // use iced::advanced::graphics::text::editor;
-// use iced::advanced::layout::{self, Layout};
-// use iced::advanced::widget::{self, Widget};
-// use iced::advanced::{image, renderer};
-// use iced::border::Radius;
-// use iced::{Border, border};
-// use iced::{Color, Element, Length, Rectangle, Size};
-// use iced::{Shadow, mouse};
-
 use cosmic_text::{
     Attrs, AttrsList, BorrowedWithFontSystem, BufferLine, Color, Edit, LineEnding, Metrics, Motion,
     SyntaxEditor,
@@ -78,31 +66,42 @@ use iced::{
     Element, Length, Rectangle, Size,
     advanced::{Layout, Widget, image, layout, widget},
     event::Status,
-    keyboard::{Key, key::Named},
+    keyboard::key::Named,
 };
+use std::{cmp, sync::RwLock};
 
-use crate::{FONT_SYSTEM, SWASH_CACHE};
+use crate::{font_system, swash_cache};
 
 pub struct TabWidget<'a> {
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
+
+    width: Length,
+    height: Length,
 }
 
 pub fn tab_widget<'a>(
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
 ) -> TabWidget<'a> {
-    TabWidget { editor, metrics }
+    TabWidget {
+        editor,
+        metrics,
+
+        width: Length::Fill,
+        height: Length::Fill,
+    }
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for TabWidget<'a>
 where
-    Renderer: image::Renderer<Handle = image::Handle>,
+    Renderer:
+        image::Renderer<Handle = image::Handle> + iced::advanced::text::Renderer<Font = iced::Font>,
 {
     fn size(&self) -> Size<Length> {
         Size {
-            width: Length::Fill,
-            height: Length::Fill,
+            width: self.width,
+            height: self.height,
         }
     }
 
@@ -112,29 +111,37 @@ where
         renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let limits = limits.width(Length::Fill).height(Length::Fill);
+        let limits = limits.width(self.width).height(self.height);
 
-        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
+        let mut font_system = font_system().write().expect("font system not writable");
+        let mut editor = self.editor.write().expect("editor not writable");
 
-        // FIXME should editor be written during layout?
-        let editor = &mut self.editor.write().unwrap();
+        editor.shape_as_needed(&mut font_system, false); // FIXME Scroll
 
-        editor.shape_as_needed(&mut font_system, true); // FIXME Scroll
-
-        editor.with_buffer(|buffer| {
-            let mut lines = 0;
-            for line in buffer.lines.iter() {
-                // one buffer line can wrap into multiple
-                if let Some(opt) = line.layout_opt() {
-                    lines += opt.len()
-                }
+        // width = self.limits
+        // height =
+        // if self.limits == shrink
+        //   expand to buffer layout runs
+        match self.height {
+            Length::Fill | Length::FillPortion(_) | Length::Fixed(_) => {
+                layout::Node::new(limits.max())
             }
+            Length::Shrink => {
+                let min_bounds = editor.with_buffer(|buf| {
+                    let (w, h) = buf.layout_runs().fold((0.0, 0.0), |(w, h), run| {
+                        (run.line_w.max(w), h + run.line_height)
+                    });
+                    Size::new(w, h)
+                });
 
-            let height = lines as f32 * buffer.metrics().line_height;
-            let size = Size::new(limits.max().width, height);
-
-            iced::advanced::layout::Node::new(limits.resolve(Length::Fill, Length::Fill, size))
-        })
+                iced::advanced::layout::Node::new(
+                    limits
+                        .height(min_bounds.height)
+                        .max()
+                        .expand(Size::new(0.0, 0.0)),
+                )
+            }
+        }
     }
 
     fn draw(
@@ -147,6 +154,10 @@ where
         cursor: iced::advanced::mouse::Cursor,
         viewport: &Rectangle,
     ) {
+        let mut font_system = font_system().write().expect("font system not writable");
+        let mut swash_cache = swash_cache().write().expect("swash cache not writable");
+        let mut editor = self.editor.write().expect("editor not writable");
+
         let view_w = cmp::min(viewport.width as i32, layout.bounds().width as i32);
         // - self.padding.horizontal() as i32
         // - scrollbar_w;
@@ -157,10 +168,6 @@ where
         let image_h = view_h as u32;
         // let image_w: u32 = 500;
         // let image_h: u32 = 500;
-
-        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
-        let mut swash_cache = SWASH_CACHE.get().unwrap().write().unwrap();
-        let mut editor = self.editor.write().unwrap();
 
         // set metrics to buffer
         editor.with_buffer_mut(|buffer| {
@@ -298,6 +305,39 @@ where
         let image = image::Image::from(&handle).filter_method(image::FilterMethod::Nearest);
 
         renderer.draw_image(image, bounds);
+
+        // --- POC: font rendering with iced_font ----
+        // Verdict: not possible because it renders once for all text, cannot use
+        // highlighter
+        // editor.with_buffer(|buffer| {
+        //     let mut text = String::new();
+        //     for line in buffer.lines.iter() {
+        //         text.push_str(line.text());
+        //         text.push_str(line.ending().as_str());
+        //     }
+
+        //     let metrics = buffer.metrics();
+
+        //     let text = iced::advanced::Text {
+        //         content: text,
+        //         bounds: size,
+        //         size: Pixels::from(metrics.font_size),
+        //         line_height: LineHeight::from(Pixels::from(metrics.line_height)),
+        //         font: iced::Font::MONOSPACE,
+        //         horizontal_alignment: alignment::Horizontal::Left,
+        //         vertical_alignment: alignment::Vertical::Top,
+        //         shaping: text::Shaping::Advanced,
+        //         wrapping: text::Wrapping::None,
+        //     };
+
+        //     renderer.fill_text(
+        //         text,
+        //         layout.position(),
+        //         iced::Color::from_rgb(1.0, 0.0, 0.0),
+        //         bounds,
+        //     )
+        // });
+        // --- ---
     }
 
     fn on_event(
@@ -311,9 +351,8 @@ where
         _shell: &mut iced::advanced::Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> iced::event::Status {
-        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
-
-        let editor = &mut self.editor.write().unwrap();
+        let mut font_system = font_system().write().expect("font system is not writable");
+        let mut editor = self.editor.write().expect("editor is not writable");
 
         let mut status = iced::event::Status::Ignored;
         fn action(
@@ -355,7 +394,8 @@ where
 
 impl<'a, Message, Theme, Renderer> From<TabWidget<'a>> for Element<'a, Message, Theme, Renderer>
 where
-    Renderer: image::Renderer<Handle = iced::advanced::image::Handle>,
+    Renderer: image::Renderer<Handle = iced::advanced::image::Handle>
+        + iced::advanced::text::Renderer<Font = iced::Font>,
 {
     fn from(value: TabWidget<'a>) -> Self {
         Self::new(value)
