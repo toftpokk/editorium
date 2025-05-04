@@ -50,15 +50,21 @@ impl TabView {
 
         Column::new()
             .push(
-                self.tabs
-                    .iter()
-                    .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
-                        let idx = tab_bar.size();
-                        tab_bar.push(idx, iced_aw::TabLabel::Text(tab.name.to_owned()))
-                    })
-                    .on_close(Message::TabClose)
-                    .tab_width(Length::Shrink)
-                    .set_active_tab(&self.active_pos),
+                Scrollable::new(
+                    self.tabs
+                        .iter()
+                        .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
+                            let idx = tab_bar.size();
+                            tab_bar.push(idx, iced_aw::TabLabel::Text(tab.name.to_owned()))
+                        })
+                        .on_close(Message::TabClose)
+                        .tab_width(Length::Shrink)
+                        .width(Length::Shrink)
+                        .set_active_tab(&self.active_pos),
+                )
+                .direction(scrollable::Direction::Horizontal(
+                    scrollable::Scrollbar::default(),
+                )),
             )
             .push(main)
             .into()
@@ -169,6 +175,7 @@ impl Tab {
                         .unwrap_or(""),
                     syntax_theme,
                 )
+                .wrapping(text::Wrapping::None)
                 .on_action(Message::Edit)
         ])
         .height(Length::Fill)
