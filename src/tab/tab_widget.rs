@@ -79,6 +79,7 @@ use crate::{Message, font_system, swash_cache};
 pub struct TabWidget<'a> {
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
+
     // time between clicks for ClickKind.
     click_timing: time::Duration,
     auto_scroll: Option<(f32, (i32, i32))>,
@@ -114,6 +115,8 @@ struct State {
     dragging: bool,
     // last click
     click_last: Option<(ClickKind, time::Instant, (f32, f32))>,
+    undo_buffer: Vec<cosmic_text::Change>,
+    redo_buffer: Vec<cosmic_text::Change>,
     // gutter_width set on first draw
     // is a Cell because written in draw
     gutter_width: Cell<i32>,
@@ -125,6 +128,8 @@ impl State {
         Self {
             dragging: false,
             click_last: None,
+            undo_buffer: Vec::new(),
+            redo_buffer: Vec::new(),
             gutter_width: Cell::new(0),
             render_handle: RefCell::new(None),
         }
@@ -429,15 +434,32 @@ where
                 if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
                     match binding {
                         Binding::Enter => {
+                            // todo put in function
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             editor.action(&mut font_system, cosmic_text::Action::Enter)
                         }
                         Binding::Backspace => {
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             editor.action(&mut font_system, cosmic_text::Action::Backspace)
                         }
                         Binding::Delete => {
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             editor.action(&mut font_system, cosmic_text::Action::Delete)
                         }
                         Binding::BackspaceWord => {
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             if editor.selection_bounds().is_some() {
                                 editor.delete_selection();
                             } else {
@@ -452,6 +474,10 @@ where
                             }
                         }
                         Binding::DeleteWord => {
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             if editor.selection_bounds().is_some() {
                                 editor.delete_selection();
                             } else {
@@ -472,12 +498,20 @@ where
                             }
                         }
                         Binding::Cut => {
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             if let Some(content) = editor.copy_selection() {
                                 clipboard.write(iced::advanced::clipboard::Kind::Standard, content);
                                 editor.action(&mut font_system, cosmic_text::Action::Delete);
                             }
                         }
                         Binding::Paste => {
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             if let Some(content) =
                                 clipboard.read(iced::advanced::clipboard::Kind::Standard)
                             {
@@ -485,6 +519,10 @@ where
                             }
                         }
                         Binding::Move(binding_motion) => {
+                            if let Some(change) = editor.finish_change() {
+                                state.undo_buffer.push(change);
+                            }
+                            editor.start_change();
                             if let Some((start, end)) = editor.selection_bounds() {
                                 editor.set_selection(cosmic_text::Selection::None);
 
@@ -565,6 +603,30 @@ where
                                     cosmic_text::Action::Motion(cosmic_text::Motion::BufferEnd),
                                 );
                             }
+                        }
+                        Binding::Undo => {
+                            if let Some(change) = &mut editor.finish_change() {
+                                change.reverse();
+                                editor.apply_change(&change);
+                                state.redo_buffer.push(change.clone());
+                            } else {
+                                if let Some(change) = &mut state.undo_buffer.pop() {
+                                    change.reverse();
+                                    editor.apply_change(&change);
+                                    state.redo_buffer.push(change.clone());
+                                }
+                            }
+                        }
+                        Binding::Redo => {
+                            // if let Some(change) = &mut editor.finish_change() {
+                            //     change.reverse();
+                            //     editor.apply_change(&change);
+                            // } else {
+                            //     if let Some(change) = &mut state.undo_buffer.pop() {
+                            //         change.reverse();
+                            //         editor.apply_change(&change);
+                            //     }
+                            // }
                         }
                     }
                     status = Status::Captured;
@@ -742,6 +804,8 @@ pub enum Binding {
     SelectAll,
     Move(BindingMotion),
     Select(BindingMotion),
+    Undo,
+    Redo,
 }
 
 pub enum BindingMotion {
@@ -816,6 +880,10 @@ impl Binding {
                 keyboard::Key::Character("x") if modifiers.command() => Some(Self::Cut),
                 keyboard::Key::Character("v") if modifiers.command() => Some(Self::Paste),
                 keyboard::Key::Character("a") if modifiers.command() => Some(Self::SelectAll),
+                keyboard::Key::Character("z") if modifiers.command() && modifiers.shift() => {
+                    Some(Self::Redo)
+                }
+                keyboard::Key::Character("z") if modifiers.command() => Some(Self::Undo),
                 keyboard::Key::Named(name) => {
                     let motion = BindingMotion::from_named_key(name)?;
                     let motion = if modifiers.macos_command() {
