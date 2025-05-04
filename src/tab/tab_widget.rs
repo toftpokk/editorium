@@ -70,7 +70,7 @@ use std::{cmp, sync::RwLock};
 // use iced::{Color, Element, Length, Rectangle, Size};
 // use iced::{Shadow, mouse};
 
-use cosmic_text::{Edit, SyntaxEditor};
+use cosmic_text::{Attrs, AttrsList, BufferLine, Color, Edit, LineEnding, SyntaxEditor};
 use iced::{
     Element, Length, Rectangle, Size,
     advanced::{Layout, Widget, image, layout, widget},
@@ -162,6 +162,54 @@ where
                     pixels_u8.len() / 4,
                 )
             };
+
+            editor.with_buffer(|buffer| {
+                for run in buffer.layout_runs() {
+                    let line_number = run.line_i;
+
+                    let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
+                    let text = format!("{}", line_number);
+                    let mut buffer_line = BufferLine::new(
+                        text,
+                        LineEnding::default(),
+                        AttrsList::new(&attrs),
+                        cosmic_text::Shaping::Advanced,
+                    );
+                    let layout = buffer_line.layout(
+                        &mut font_system,
+                        1.0,
+                        None,
+                        cosmic_text::Wrap::None,
+                        None,
+                        8,
+                    );
+
+                    for glyph in layout[0].glyphs.to_vec() {
+                        let physical_glyph = glyph.physical((0.0, run.line_top), 20.0);
+
+                        swash_cache.with_pixels(
+                            &mut font_system,
+                            physical_glyph.cache_key,
+                            Color::rgb(255, 0, 0),
+                            |x, y, color| {
+                                draw_rect(
+                                    pixels,
+                                    Canvas {
+                                        w: image_w as i32,
+                                        h: image_h as i32,
+                                    },
+                                    Canvas { h: 1, w: 1 },
+                                    Offset {
+                                        x: physical_glyph.x + x,
+                                        y: physical_glyph.y + y,
+                                    },
+                                    color,
+                                );
+                            },
+                        );
+                    }
+                }
+            });
 
             editor.draw(&mut font_system, &mut swash_cache, |x, y, w, h, color| {
                 draw_rect(
