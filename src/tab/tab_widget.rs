@@ -136,6 +136,18 @@ impl State {
     }
 }
 
+impl<'a> TabWidget<'a> {
+    fn start_new_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
+        if state.redo_buffer.len() > 0 {
+            state.redo_buffer.clear();
+        }
+        if let Some(change) = editor.finish_change() {
+            state.undo_buffer.push(change);
+        }
+        editor.start_change();
+    }
+}
+
 impl<'a, Theme, Renderer> Widget<Message, Theme, Renderer> for TabWidget<'a>
 where
     Renderer:
@@ -435,31 +447,19 @@ where
                     match binding {
                         Binding::Enter => {
                             // todo put in function
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
+                            self.start_new_change(&mut editor, state);
                             editor.action(&mut font_system, cosmic_text::Action::Enter)
                         }
                         Binding::Backspace => {
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
+                            self.start_new_change(&mut editor, state);
                             editor.action(&mut font_system, cosmic_text::Action::Backspace)
                         }
                         Binding::Delete => {
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
+                            self.start_new_change(&mut editor, state);
                             editor.action(&mut font_system, cosmic_text::Action::Delete)
                         }
                         Binding::BackspaceWord => {
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
+                            self.start_new_change(&mut editor, state);
                             if editor.selection_bounds().is_some() {
                                 editor.delete_selection();
                             } else {
@@ -474,10 +474,7 @@ where
                             }
                         }
                         Binding::DeleteWord => {
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
+                            self.start_new_change(&mut editor, state);
                             if editor.selection_bounds().is_some() {
                                 editor.delete_selection();
                             } else {
@@ -498,31 +495,22 @@ where
                             }
                         }
                         Binding::Cut => {
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
+                            self.start_new_change(&mut editor, state);
                             if let Some(content) = editor.copy_selection() {
                                 clipboard.write(iced::advanced::clipboard::Kind::Standard, content);
                                 editor.action(&mut font_system, cosmic_text::Action::Delete);
                             }
                         }
                         Binding::Paste => {
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
                             if let Some(content) =
                                 clipboard.read(iced::advanced::clipboard::Kind::Standard)
                             {
+                                self.start_new_change(&mut editor, state);
                                 editor.insert_string(&content, None);
                             }
                         }
                         Binding::Move(binding_motion) => {
-                            if let Some(change) = editor.finish_change() {
-                                state.undo_buffer.push(change);
-                            }
-                            editor.start_change();
+                            self.start_new_change(&mut editor, state);
                             if let Some((start, end)) = editor.selection_bounds() {
                                 editor.set_selection(cosmic_text::Selection::None);
 
@@ -605,6 +593,7 @@ where
                             }
                         }
                         Binding::Undo => {
+                            println!("Buf: {:?}", state.undo_buffer);
                             if let Some(change) = &mut editor.finish_change() {
                                 change.reverse();
                                 editor.apply_change(&change);
@@ -618,21 +607,21 @@ where
                             }
                         }
                         Binding::Redo => {
-                            // if let Some(change) = &mut editor.finish_change() {
-                            //     change.reverse();
-                            //     editor.apply_change(&change);
-                            // } else {
-                            //     if let Some(change) = &mut state.undo_buffer.pop() {
-                            //         change.reverse();
-                            //         editor.apply_change(&change);
-                            //     }
-                            // }
+                            if let Some(_) = &mut editor.finish_change() {
+                                // no redos allowed if changing
+                            } else {
+                                if let Some(change) = &mut state.redo_buffer.pop() {
+                                    change.reverse();
+                                    editor.apply_change(&change);
+                                }
+                            }
                         }
                     }
                     status = Status::Captured;
                 } else if let keyboard::Event::KeyPressed { text, .. } = event {
                     if let Some(text) = text {
                         if let Some(c) = text.chars().find(|c| !c.is_control()) {
+                            editor.start_change();
                             editor.insert_string(&c.to_string(), None);
                             status = Status::Captured
                         }
