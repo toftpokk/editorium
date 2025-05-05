@@ -1,69 +1,9 @@
-// // TODO rename Tab -> Textbox
-// copied & inspired by cosmic-text, cosmic-edit, iced text-editor
-
-// use std::fmt::Debug;
-
-// use crate::Message;
-
-// use iced::advanced::graphics::core::Element;
-// use iced::advanced::layout::{self, Layout};
-// use iced::advanced::renderer;
-// use iced::advanced::widget::{self, Widget};
-// use iced::mouse;
-// use iced::widget::{Column, canvas, column};
-// use iced::{Color, Length, Rectangle, Size};
-// use iced::{Renderer, border};
-// struct Theme {}
-// // impl<Message> canvas::Program<Message, Renderer> for TabWidget
-// // where
-// //     Renderer: iced::advanced::text::Renderer,
-// // {
-// //     type State;
-// //     fn draw(
-// //         &self,
-// //         state: &Self::State,
-// //         renderer: &Renderer,
-// //         theme: &Renderer,
-// //         bounds: Rectangle,
-// //         cursor: iced::advanced::mouse::Cursor,
-// //     ) -> Vec<canvas::Geometry<Renderer>> {
-// //         todo!()
-// //     }
-// // }
-// struct Example {
-//     radius: f32,
-// }
-// impl Example {
-//     fn new() -> Self {
-//         Example { radius: 50.0 }
-//     }
-//     fn update(&mut self, message: Message) {
-//         // match message {
-//         //     Message::RadiusChanged(radius) => {
-//         //         self.radius = radius;
-//         //     }
-//         // }
-//     }
-//     fn view(&self) -> Element<Message> {
-//         let content = column![
-//             widget(),
-//             // text!("Radius: {:.2}", self.radius),
-//             // slider(1.0..=100.0, self.radius, Message::RadiusChanged).step(0.01),
-//         ]
-//         .padding(20)
-//         .spacing(20)
-//         .max_width(500);
-//         // .align_x(Center);
-//         center(content).into()
-//     }
-// }
-
 use cosmic_text::{
     Attrs, AttrsList, BufferLine, Color, Edit, LineEnding, Metrics, Motion, SyntaxEditor,
 };
 use iced::{
     Element, Length, Padding, Rectangle, Size,
-    advanced::{Layout, Widget, graphics::core::window, image, layout, widget},
+    advanced::{Layout, Widget, image, layout, widget},
     event::Status,
     keyboard,
 };
@@ -166,8 +106,8 @@ where
 
     fn layout(
         &self,
-        tree: &mut widget::Tree,
-        renderer: &Renderer,
+        _tree: &mut widget::Tree,
+        _renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
         let limits = limits.width(self.width).height(self.height);
@@ -207,10 +147,10 @@ where
         &self,
         tree: &widget::Tree,
         renderer: &mut Renderer,
-        theme: &Theme,
-        style: &iced::advanced::renderer::Style,
+        _theme: &Theme,
+        _style: &iced::advanced::renderer::Style,
         layout: Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
+        _cursor: iced::advanced::mouse::Cursor,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
@@ -289,8 +229,13 @@ where
             };
 
             editor.with_buffer(|buffer| {
+                let mut last_line_number = 0;
                 for run in buffer.layout_runs() {
                     let line_number = run.line_i.saturating_add(1);
+                    if line_number == last_line_number {
+                        continue;
+                    }
+                    last_line_number = line_number;
 
                     let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
                     let text = format!("{:>line_number_chars$}", line_number);
@@ -593,7 +538,6 @@ where
                             }
                         }
                         Binding::Undo => {
-                            println!("Buf: {:?}", state.undo_buffer);
                             if let Some(change) = &mut editor.finish_change() {
                                 change.reverse();
                                 editor.apply_change(&change);
@@ -627,13 +571,6 @@ where
                         }
                     }
                 }
-            }
-            iced::Event::Window(window::Event::Focused) => {
-                // get last change if exists
-                // let change = editor.finish_change();
-                // // start new change
-                // editor.start_change();
-                status = Status::Captured
             }
             iced::Event::Mouse(event) => match event {
                 iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {

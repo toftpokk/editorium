@@ -132,9 +132,6 @@ pub struct Tab {
     editor: RwLock<SyntaxEditor<'static, 'static>>, // RwLock allows writing during draw
     attrs: Attrs<'static>,
     metrics: Metrics,
-
-    padding: Padding,
-    line_numbers: bool,
 }
 
 impl Tab {
@@ -148,14 +145,7 @@ impl Tab {
             file_path: None,
             editor: RwLock::new(editor),
             attrs,
-            padding: Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 0.0,
-                left: 0.0,
-            },
             metrics,
-            line_numbers: true,
         }
     }
 
@@ -214,32 +204,4 @@ impl Tab {
             "New Tab".into()
         }
     }
-}
-
-fn line_number(line_count: usize, font_size: f32, line_height: f32) -> Element<'static, Message> {
-    let mut lines: Vec<Element<Message>> = Vec::new();
-    let box_height = text::LineHeight::from(line_height).to_absolute(Pixels(font_size));
-
-    for i in 1..line_count.saturating_add(1) {
-        let container = container(
-            text(i)
-                .font(Font::MONOSPACE)
-                .size(font_size)
-                .line_height(line_height),
-        )
-        .width(Length::Fixed(40.0))
-        .align_x(Alignment::End)
-        .align_y(Alignment::End)
-        .height(box_height);
-        lines.push(container.into());
-    }
-
-    column(lines)
-        .padding(Padding {
-            top: 0.0,
-            bottom: 0.0,
-            left: 0.0,
-            right: 15.0,
-        })
-        .into()
 }
