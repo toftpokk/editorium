@@ -465,7 +465,41 @@ where
                         }
                         Binding::Backspace => {
                             self.start_new_change(&mut editor, state);
-                            editor.action(&mut font_system, cosmic_text::Action::Backspace)
+                            // editor.action(&mut font_system, cosmic_text::Action::Backspace)
+                            if editor.delete_selection() {
+                                // selection deleted
+                            } else {
+                                editor.action(&mut font_system, cosmic_text::Action::Backspace);
+                                // let cursor = editor.cursor();
+                                // editor.tab_width();
+                                // editor.with_buffer(|buffer| {
+                                //     let pretext = buffer.lines[cursor.line].text()[..cursor.index];
+                                //     // buffer.lines[cursor.line].text()[..cursor.index];
+                                // });
+
+                                // let end = self.cursor;
+
+                                // if self.cursor.index > 0 {
+                                //     // Move cursor to previous character index
+                                //     self.cursor.index = self.with_buffer(|buffer| {
+                                //         buffer.lines[self.cursor.line].text()[..self.cursor.index]
+                                //             .char_indices()
+                                //             .next_back()
+                                //             .map_or(0, |(i, _)| i)
+                                //     });
+                                // } else if self.cursor.line > 0 {
+                                //     // Move cursor to previous line
+                                //     self.cursor.line -= 1;
+                                //     self.cursor.index = self.with_buffer(|buffer| {
+                                //         buffer.lines[self.cursor.line].text().len()
+                                //     });
+                                // }
+
+                                // if self.cursor != end {
+                                //     // Delete range
+                                //     self.delete_range(self.cursor, end);
+                                // }
+                            }
                         }
                         Binding::Delete => {
                             self.start_new_change(&mut editor, state);
@@ -473,8 +507,8 @@ where
                         }
                         Binding::BackspaceWord => {
                             self.start_new_change(&mut editor, state);
-                            if editor.selection_bounds().is_some() {
-                                editor.delete_selection();
+                            if editor.delete_selection() {
+                                // selection deleted
                             } else {
                                 let cursor_start = editor.cursor();
                                 editor.action(
@@ -488,8 +522,8 @@ where
                         }
                         Binding::DeleteWord => {
                             self.start_new_change(&mut editor, state);
-                            if editor.selection_bounds().is_some() {
-                                editor.delete_selection();
+                            if editor.delete_selection() {
+                                // selection deleted
                             } else {
                                 let cursor_start = editor.cursor();
                                 editor.action(
