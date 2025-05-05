@@ -61,7 +61,7 @@ fn main() -> Result<(), iced::Error> {
     FONT_SYSTEM.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
     SYNTAX_SYSTEM.get_or_init(|| cosmic_text::SyntaxSystem::new());
     SWASH_CACHE.get_or_init(|| RwLock::new(cosmic_text::SwashCache::new()));
-    KEY_BINDINGS.get_or_init(|| HashMap::new());
+    KEY_BINDINGS.get_or_init(|| key_binds::default());
 
     env_logger::init();
     iced::application("Editorium", App::update, App::view)

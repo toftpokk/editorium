@@ -630,12 +630,17 @@ where
                         }
                     }
                     status = Status::Captured;
-                } else if let keyboard::Event::KeyPressed { text, .. } = event {
-                    if let Some(text) = text {
-                        if let Some(c) = text.chars().find(|c| !c.is_control()) {
-                            editor.start_change();
-                            editor.insert_string(&c.to_string(), None);
-                            status = Status::Captured
+                } else if let keyboard::Event::KeyPressed {
+                    text, modifiers, ..
+                } = event
+                {
+                    if !modifiers.logo() && !modifiers.control() && !modifiers.alt() {
+                        if let Some(text) = text {
+                            if let Some(c) = text.chars().find(|c| !c.is_control()) {
+                                editor.start_change();
+                                editor.insert_string(&c.to_string(), None);
+                                status = Status::Captured
+                            }
                         }
                     }
                 }
