@@ -56,8 +56,6 @@ enum Message {
 }
 
 fn main() -> Result<(), iced::Error> {
-    // SYNTAX_SYSTEM.get_or_init(f)
-    // FONT_SYSTEM = ;
     FONT_SYSTEM.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
     SYNTAX_SYSTEM.get_or_init(|| cosmic_text::SyntaxSystem::new());
     SWASH_CACHE.get_or_init(|| RwLock::new(cosmic_text::SwashCache::new()));

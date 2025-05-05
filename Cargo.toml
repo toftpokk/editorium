@@ -11,3 +11,4 @@ log = "0.4.27"
 rfd = "0.15.3"
 clap = { version = "4.5.37", features = ["derive"] }
 cosmic-text = { version = "0.14.2", features = ["syntect"] }
+syntect = "5.2.0"

@@ -1140,6 +1140,7 @@ dependencies = [
  "iced_aw",
  "log",
  "rfd",
+ "syntect",
 ]
 
 [[package]]

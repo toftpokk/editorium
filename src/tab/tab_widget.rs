@@ -204,7 +204,6 @@ where
         };
 
         state.gutter_width.replace(gutter_width);
-        // TODO editor selective redraw
 
         // set metrics to buffer & set size of buffer (for mouse)
         editor.with_buffer_mut(|buffer| {
@@ -227,6 +226,36 @@ where
                     pixels_u8.len() / 4,
                 )
             };
+
+            let (gutter, gutter_foreground) = {
+                let convert_color = |color: syntect::highlighting::Color| {
+                    cosmic_text::Color::rgba(color.r, color.g, color.b, color.a)
+                };
+                let syntax_theme = editor.theme();
+                let gutter = syntax_theme
+                    .settings
+                    .gutter
+                    .map_or(editor.background_color(), convert_color);
+                let gutter_foreground = syntax_theme
+                    .settings
+                    .gutter_foreground
+                    .map_or(editor.foreground_color(), convert_color);
+                (gutter, gutter_foreground)
+            };
+
+            draw_rect(
+                pixels,
+                Canvas {
+                    w: image_w,
+                    h: image_h,
+                },
+                Canvas {
+                    w: gutter_width,
+                    h: image_h,
+                },
+                Offset { x: 0, y: 0 },
+                gutter,
+            );
 
             editor.with_buffer(|buffer| {
                 let mut last_line_number = 0;
@@ -271,7 +300,7 @@ where
                         swash_cache.with_pixels(
                             &mut font_system,
                             physical_glyph.cache_key,
-                            Color::rgb(0, 0, 0),
+                            gutter_foreground,
                             |x, y, color| {
                                 draw_rect(
                                     pixels,
@@ -391,9 +420,15 @@ where
                 if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
                     match binding {
                         Binding::Enter => {
-                            // todo put in function
                             self.start_new_change(&mut editor, state);
                             editor.action(&mut font_system, cosmic_text::Action::Enter)
+                        }
+                        Binding::Tab => {
+                            self.start_new_change(&mut editor, state);
+                            editor.insert_string("  ", None);
+                            // TODO
+                            // if after first non-space character of line, use <tab>
+                            // else, tab until equal tab width
                         }
                         Binding::Backspace => {
                             self.start_new_change(&mut editor, state);
@@ -719,6 +754,7 @@ where
 // event -> binding -> editor.action
 pub enum Binding {
     Enter,
+    Tab,
     Backspace,
     BackspaceWord,
     Delete,
@@ -787,6 +823,7 @@ impl Binding {
         match event {
             keyboard::Event::KeyPressed { key, modifiers, .. } => match key.as_ref() {
                 keyboard::Key::Named(keyboard::key::Named::Enter) => Some(Self::Enter),
+                keyboard::Key::Named(keyboard::key::Named::Tab) => Some(Self::Tab),
                 keyboard::Key::Named(keyboard::key::Named::Backspace) => {
                     if modifiers.command() {
                         Some(Self::BackspaceWord)
