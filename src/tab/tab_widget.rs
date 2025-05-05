@@ -63,6 +63,7 @@ struct State {
     gutter_width: Cell<i32>,
     max_line_width: Cell<f32>,
     render_handle: RefCell<Option<image::Handle>>,
+    parial_scroll: f32,
 
     modifiers_shift: bool, // solely for shift scroll
 }
@@ -78,6 +79,7 @@ impl State {
             render_handle: RefCell::new(None),
             modifiers_shift: false,
             max_line_width: Cell::new(0.0),
+            parial_scroll: 0.0,
         }
     }
 }
@@ -745,51 +747,63 @@ where
                 // TODO scroll past editor bounds
                 iced::mouse::Event::WheelScrolled { delta } => {
                     if let Some(_) = cursor.position_in(layout.bounds()) {
-                        match delta {
-                            // Note: mouse event + modifiers is still in PR https://github.com/iced-rs/iced/pull/2733
-                            iced::mouse::ScrollDelta::Lines { y, .. } => {
+                        let (x, lines_y) = match delta {
+                            iced::mouse::ScrollDelta::Lines { x, y } => {
                                 // method from iced text_editor
-                                let scroll_lines = if y.abs() > 0.0 {
+                                let lines_y = if y.abs() > 0.0 {
                                     y.signum() * -(y.abs() * 4.0).max(1.0)
                                 } else {
                                     0.0
                                 };
-
-                                if state.modifiers_shift {
-                                    editor.with_buffer_mut(|buffer| {
-                                        let mut scroll = buffer.scroll();
-                                        let buffer_w = buffer.size().0.unwrap_or(0.0);
-
-                                        scroll.horizontal +=
-                                            scroll_lines as f32 * buffer.metrics().font_size;
-                                        scroll.horizontal = scroll
-                                            .horizontal
-                                            .min(state.max_line_width.get() - buffer_w)
-                                            .max(0.0);
-
-                                        buffer.set_scroll(scroll);
-                                    });
-                                } else {
-                                    // note buffer.set_scroll limits scrolling past bottom
-                                    editor.action(
-                                        &mut font_system,
-                                        cosmic_text::Action::Scroll {
-                                            lines: scroll_lines as i32,
-                                        },
-                                    );
-                                }
+                                (x * 4.0, lines_y)
                             }
-                            iced::mouse::ScrollDelta::Pixels { y, .. } => {
+                            iced::mouse::ScrollDelta::Pixels { x, y } => {
                                 // method from iced text_editor
-                                let scroll_lines = -y / 4.0;
+                                let lines_y = -y / 4.0;
 
-                                editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Scroll {
-                                        lines: scroll_lines as i32,
-                                    },
-                                );
+                                (x, lines_y)
                             }
+                        };
+
+                        let lines_y = lines_y + state.parial_scroll;
+                        state.parial_scroll = lines_y.fract();
+
+                        // Note: mouse event + modifiers is still in PR https://github.com/iced-rs/iced/pull/2733
+                        if state.modifiers_shift {
+                            // scroll only y
+                            editor.with_buffer_mut(|buffer| {
+                                let mut scroll = buffer.scroll();
+                                let buffer_w = buffer.size().0.unwrap_or(0.0);
+
+                                scroll.horizontal += lines_y as f32 * buffer.metrics().font_size;
+                                scroll.horizontal = scroll
+                                    .horizontal
+                                    .min(state.max_line_width.get() - buffer_w)
+                                    .max(0.0);
+
+                                buffer.set_scroll(scroll);
+                            });
+                        } else {
+                            // scroll x and y
+                            editor.action(
+                                &mut font_system,
+                                cosmic_text::Action::Scroll {
+                                    lines: lines_y as i32,
+                                },
+                            );
+
+                            editor.with_buffer_mut(|buffer| {
+                                let mut scroll = buffer.scroll();
+                                let buffer_w = buffer.size().0.unwrap_or(0.0);
+
+                                scroll.horizontal += -x;
+                                scroll.horizontal = scroll
+                                    .horizontal
+                                    .min(state.max_line_width.get() - buffer_w)
+                                    .max(0.0);
+
+                                buffer.set_scroll(scroll);
+                            });
                         }
                     }
                 }
