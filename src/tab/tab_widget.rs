@@ -200,7 +200,8 @@ where
             let layout_line = &layout[0];
 
             let line_number_width = layout_line.w * self.metrics.font_size;
-            (line_number_width + 8.0).ceil() as i32
+            let padding_x = 40.0;
+            (line_number_width + padding_x).ceil() as i32
         };
 
         state.gutter_width.replace(gutter_width);
@@ -297,6 +298,7 @@ where
                     for glyph in layout_line.glyphs.to_vec() {
                         let physical_glyph = glyph.physical((0.0, line_y), self.metrics.font_size);
 
+                        let padding_x_start = 20;
                         swash_cache.with_pixels(
                             &mut font_system,
                             physical_glyph.cache_key,
@@ -310,7 +312,7 @@ where
                                     },
                                     Canvas { h: 1, w: 1 },
                                     Offset {
-                                        x: physical_glyph.x + x,
+                                        x: physical_glyph.x + x + padding_x_start,
                                         y: physical_glyph.y + y,
                                     },
                                     color,
@@ -321,6 +323,7 @@ where
                 }
             });
 
+            // FIXME: cosmic text highlight lines until end of buffer, not end of line
             let scroll_x = editor.with_buffer(|buffer| buffer.scroll().horizontal as i32);
             editor.draw(&mut font_system, &mut swash_cache, |x, y, w, h, color| {
                 draw_rect(
@@ -363,7 +366,7 @@ where
 
         // --- POC: font rendering with iced_font ----
         // Verdict: not possible because it renders once for all text, cannot use
-        // highlighter
+        // highlighter, fill_editor cannot be used since it requires iced editor
         // editor.with_buffer(|buffer| {
         //     let mut text = String::new();
         //     for line in buffer.lines.iter() {
