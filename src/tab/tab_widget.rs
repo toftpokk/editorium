@@ -60,7 +60,10 @@ struct State {
     // gutter_width set on first draw
     // is a Cell because written in draw
     gutter_width: Cell<i32>,
+    max_line_width: Cell<f32>,
     render_handle: RefCell<Option<image::Handle>>,
+
+    modifiers_shift: bool, // solely for shift scroll
 }
 
 impl State {
@@ -72,6 +75,8 @@ impl State {
             redo_buffer: Vec::new(),
             gutter_width: Cell::new(0),
             render_handle: RefCell::new(None),
+            modifiers_shift: false,
+            max_line_width: Cell::new(0.0),
         }
     }
 }
@@ -206,8 +211,20 @@ where
             let padding_x = 40.0;
             (line_number_width + padding_x).ceil() as i32
         };
-
         state.gutter_width.replace(gutter_width);
+
+        // get max line width
+        let max_line_width = editor.with_buffer(|buffer| {
+            let mut max_line_width = 0.0;
+            for run in buffer.layout_runs() {
+                if run.line_w > max_line_width {
+                    max_line_width = run.line_w;
+                }
+            }
+
+            max_line_width
+        });
+        state.max_line_width.replace(max_line_width);
 
         // set metrics to buffer & set size of buffer (for mouse)
         editor.with_buffer_mut(|buffer| {
@@ -261,6 +278,7 @@ where
                 gutter,
             );
 
+            // draw line numbers
             editor.with_buffer(|buffer| {
                 let mut last_line_number = 0;
                 for run in buffer.layout_runs() {
@@ -430,6 +448,9 @@ where
 
         let mut status = Status::Ignored;
         match event {
+            iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+                state.modifiers_shift = modifiers.shift()
+            }
             iced::Event::Keyboard(event) => {
                 if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
                     match binding {
@@ -721,7 +742,8 @@ where
                 iced::mouse::Event::WheelScrolled { delta } => {
                     if let Some(_) = cursor.position_in(layout.bounds()) {
                         match delta {
-                            iced::mouse::ScrollDelta::Lines { x: _, y } => {
+                            // Note: mouse event + modifiers is still in PR https://github.com/iced-rs/iced/pull/2733
+                            iced::mouse::ScrollDelta::Lines { y, .. } => {
                                 // method from iced text_editor
                                 let scroll_lines = if y.abs() > 0.0 {
                                     y.signum() * -(y.abs() * 4.0).max(1.0)
@@ -729,14 +751,31 @@ where
                                     0.0
                                 };
 
-                                editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Scroll {
-                                        lines: scroll_lines as i32,
-                                    },
-                                );
+                                if state.modifiers_shift {
+                                    editor.with_buffer_mut(|buffer| {
+                                        let mut scroll = buffer.scroll();
+                                        let buffer_w = buffer.size().0.unwrap_or(0.0);
+
+                                        scroll.horizontal +=
+                                            scroll_lines as f32 * buffer.metrics().font_size;
+                                        scroll.horizontal = scroll
+                                            .horizontal
+                                            .max(0.0)
+                                            .min(state.max_line_width.get() - buffer_w);
+
+                                        buffer.set_scroll(scroll);
+                                    });
+                                } else {
+                                    // note buffer.set_scroll limits scrolling past bottom
+                                    editor.action(
+                                        &mut font_system,
+                                        cosmic_text::Action::Scroll {
+                                            lines: scroll_lines as i32,
+                                        },
+                                    );
+                                }
                             }
-                            iced::mouse::ScrollDelta::Pixels { x: _, y } => {
+                            iced::mouse::ScrollDelta::Pixels { y, .. } => {
                                 // method from iced text_editor
                                 let scroll_lines = -y / 4.0;
 
