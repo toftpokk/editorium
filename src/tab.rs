@@ -156,6 +156,7 @@ impl Tab {
             .unwrap()
             .borrow_with(&mut font_system)
             .load_text(file_path.clone(), self.attrs.clone())?;
+        // Note: open file speed limited by shape_as_needed and shape_until_scroll
         self.file_path = Some(file_path);
         Ok(())
     }
