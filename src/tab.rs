@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::RwLock;
 use std::{fs, io};
 
 use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
 use iced::advanced::graphics::text::{editor, font_system};
+use iced::keyboard::Modifiers;
 use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
-use iced::{Alignment, Element, Font, Length, Padding, Pixels};
+use iced::{Alignment, Element, Font, Length, Padding, Pixels, keyboard};
 use iced_aw::TabBar;
 use tab_widget::tab_widget;
 
@@ -15,6 +17,7 @@ mod tab_widget;
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
+use crate::{KEY_BINDINGS, Message};
 
 pub struct TabView {
     active: Option<usize>,

@@ -28,6 +28,27 @@ pub fn default() -> HashMap<KeyBind, Message> {
         },
         Message::TabCloseCurrent,
     );
+    key_bind.insert(
+        KeyBind {
+            modifiers: Modifiers::ALT,
+            key: Key::Character("1".into()),
+        },
+        Message::TabSelected(0),
+    );
+    key_bind.insert(
+        KeyBind {
+            modifiers: Modifiers::ALT,
+            key: Key::Character("2".into()),
+        },
+        Message::TabSelected(1),
+    );
+    key_bind.insert(
+        KeyBind {
+            modifiers: Modifiers::ALT,
+            key: Key::Character("3".into()),
+        },
+        Message::TabSelected(2),
+    );
 
     key_bind
 }

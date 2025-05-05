@@ -17,6 +17,7 @@ use iced::{
     },
 };
 use iced_aw::iced_fonts;
+use key_binds::KeyBind;
 use rfd::FileDialog;
 
 mod cli;
@@ -54,6 +55,8 @@ enum Message {
     AutoScroll,
     SetAutoScroll(Option<f32>),
 }
+
+static KEY_BINDINGS: OnceLock<HashMap<KeyBind, Message>> = OnceLock::new();
 
 fn main() -> Result<(), iced::Error> {
     FONT_SYSTEM.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
@@ -118,7 +121,6 @@ struct App {
     tabs: tab::TabView,
     project_tree: project::ProjectTree,
     current_project: Option<project::Project>,
-    key_binds: HashMap<key_binds::KeyBind, Message>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
 }
@@ -139,11 +141,12 @@ impl App {
     fn new() -> (Self, Task<Message>) {
         let cli = cli::Cli::parse();
 
+        KEY_BINDINGS.get_or_init(|| key_binds::default());
+
         let mut app = Self {
             tabs: tab::TabView::new(),
             project_tree: project::ProjectTree::new(),
             current_project: None,
-            key_binds: key_binds::default(),
             panes: create_pane(),
             auto_scroll: None,
         };
@@ -197,7 +200,7 @@ impl App {
                 self.update_tab();
             }
             Message::KeyPressed(modifier, key) => {
-                if let Some(value) = self.key_binds.get(&key_binds::KeyBind {
+                if let Some(value) = KEY_BINDINGS.get().unwrap().get(&key_binds::KeyBind {
                     modifiers: modifier,
                     key: key,
                 }) {
@@ -317,6 +320,7 @@ impl App {
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
+                print!("{:?} {:?} {:?}\n", modifiers, key, status);
                 match status {
                     event::Status::Captured => None,
                     event::Status::Ignored => Some(Message::KeyPressed(modifiers, key)),
