@@ -29,6 +29,7 @@ mod tab;
 static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
 static SYNTAX_SYSTEM: OnceLock<cosmic_text::SyntaxSystem> = OnceLock::new();
 static SWASH_CACHE: OnceLock<RwLock<cosmic_text::SwashCache>> = OnceLock::new();
+static KEY_BINDINGS: OnceLock<HashMap<KeyBind, Message>> = OnceLock::new();
 
 fn font_system() -> &'static RwLock<cosmic_text::FontSystem> {
     FONT_SYSTEM.get().unwrap()
@@ -56,12 +57,11 @@ enum Message {
     SetAutoScroll(Option<f32>),
 }
 
-static KEY_BINDINGS: OnceLock<HashMap<KeyBind, Message>> = OnceLock::new();
-
 fn main() -> Result<(), iced::Error> {
     FONT_SYSTEM.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
     SYNTAX_SYSTEM.get_or_init(|| cosmic_text::SyntaxSystem::new());
     SWASH_CACHE.get_or_init(|| RwLock::new(cosmic_text::SwashCache::new()));
+    KEY_BINDINGS.get_or_init(|| HashMap::new());
 
     env_logger::init();
     iced::application("Editorium", App::update, App::view)

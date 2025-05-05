@@ -11,13 +11,12 @@ use iced::{Alignment, Element, Font, Length, Padding, Pixels, keyboard};
 use iced_aw::TabBar;
 use tab_widget::tab_widget;
 
-use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM};
+use crate::{FONT_SYSTEM, KEY_BINDINGS, Message, SYNTAX_SYSTEM};
 
 mod tab_widget;
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
-use crate::{KEY_BINDINGS, Message};
 
 pub struct TabView {
     active: Option<usize>,
