@@ -5,7 +5,7 @@ use iced::{
     Element, Length, Padding, Rectangle, Size,
     advanced::{Layout, Widget, image, layout, widget},
     event::Status,
-    keyboard,
+    keyboard, mouse,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -756,6 +756,35 @@ where
         };
 
         status
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &widget::Tree,
+        layout: Layout<'_>,
+        cursor: iced::advanced::mouse::Cursor,
+        _viewport: &Rectangle,
+        _renderer: &Renderer,
+    ) -> iced::advanced::mouse::Interaction {
+        let state = tree.state.downcast_ref::<State>();
+
+        if let Some(p) = cursor.position_in(layout.bounds()) {
+            let gutter_width = state.gutter_width.get();
+            let editor = self.editor.read().unwrap();
+            let buffer_size = editor.with_buffer(|buffer| buffer.size());
+
+            let x = p.x - self.padding.left - gutter_width as f32;
+            let y = p.y - self.padding.top;
+            if x >= 0.0
+                && x < buffer_size.0.unwrap_or(0.0)
+                && y >= 0.0
+                && y < buffer_size.1.unwrap_or(0.0)
+            {
+                return mouse::Interaction::Text;
+            }
+        }
+
+        mouse::Interaction::Idle
     }
 }
 
