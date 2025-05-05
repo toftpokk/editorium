@@ -141,12 +141,16 @@ impl Tab {
         let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
         let syntax_system: &SyntaxSystem = SYNTAX_SYSTEM.get().unwrap();
         let editor = SyntaxEditor::new(buffer, &syntax_system, "base16-eighties.dark").unwrap();
-        Self {
+
+        let mut tab = Self {
             file_path: None,
             editor: RwLock::new(editor),
             attrs,
             metrics,
-        }
+        };
+        tab.set_config();
+
+        tab
     }
 
     pub fn open_file(&mut self, file_path: PathBuf) -> io::Result<()> {
@@ -204,5 +208,17 @@ impl Tab {
         } else {
             "New Tab".into()
         }
+    }
+
+    fn set_config(&mut self) {
+        let mut editor = self.editor.write().unwrap();
+        let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
+
+        let mut editor = editor.borrow_with(&mut font_system);
+        editor.set_tab_width(8);
+        editor.set_auto_indent(true);
+        editor.with_buffer_mut(|buffer| {
+            buffer.set_wrap(cosmic_text::Wrap::None);
+        });
     }
 }

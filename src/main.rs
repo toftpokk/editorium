@@ -157,14 +157,6 @@ impl App {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            // Message::Edit(action) => match action {
-            //     text_editor::Action::Scroll { .. } => (),
-            //     _ => {
-            //         if let Some(t) = self.tabs.get_current() {
-            //             t.action(action);
-            //         }
-            //     }
-            // },
             Message::OpenFileSelector => {
                 if let Some(file_path) =
                     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))

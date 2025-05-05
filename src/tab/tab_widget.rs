@@ -77,13 +77,16 @@ impl State {
 }
 
 impl<'a> TabWidget<'a> {
-    fn start_new_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
+    fn finish_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
         if state.redo_buffer.len() > 0 {
             state.redo_buffer.clear();
         }
         if let Some(change) = editor.finish_change() {
             state.undo_buffer.push(change);
         }
+    }
+    fn start_new_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
+        self.finish_change(editor, state);
         editor.start_change();
     }
 }
@@ -326,18 +329,26 @@ where
             // FIXME: cosmic text highlight lines until end of buffer, not end of line
             let scroll_x = editor.with_buffer(|buffer| buffer.scroll().horizontal as i32);
             editor.draw(&mut font_system, &mut swash_cache, |x, y, w, h, color| {
+                let mut w = w as i32;
+                let mut x = x;
+                // adjust drawing if x is behind gutter
+                if x < scroll_x {
+                    let hidden_w = scroll_x - x;
+                    if hidden_w >= w {
+                        return;
+                    }
+                    x = scroll_x;
+                    w = w - hidden_w;
+                }
                 draw_rect(
                     pixels,
                     Canvas {
                         w: image_w as i32,
                         h: image_h as i32,
                     },
-                    Canvas {
-                        w: w as i32,
-                        h: h as i32,
-                    },
+                    Canvas { w: w, h: h as i32 },
                     Offset {
-                        x: x + gutter_width - scroll_x,
+                        x: gutter_width + x - scroll_x,
                         y,
                     },
                     color,
@@ -612,9 +623,9 @@ where
             }
             iced::Event::Mouse(event) => match event {
                 iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
-                    if let Some(pos) = cursor.position() {
-                        let x = pos.x - layout.bounds().x - self.padding.left - gutter_width as f32;
-                        let y = pos.y - layout.bounds().y - self.padding.top;
+                    if let Some(pos) = cursor.position_in(layout.bounds()) {
+                        let mut x = pos.x - self.padding.left - gutter_width as f32;
+                        let y = pos.y - self.padding.top;
 
                         // checks if x, y not in gutter
                         if x >= 0.0
@@ -622,6 +633,7 @@ where
                             && y >= 0.0
                             && y < buffer_size.1.unwrap_or(0.0)
                         {
+                            x += buffer_scroll.horizontal;
                             // handle click kind
                             let kind = if let Some((kind, timing, at)) = state.click_last.take() {
                                 if timing.elapsed() < self.click_timing && x == at.0 && y == at.1 {
@@ -676,9 +688,12 @@ where
                 iced::mouse::Event::CursorMoved { .. } => {
                     if state.dragging {
                         if let Some(pos) = cursor.position() {
-                            let x =
+                            // cares when cursor is outside of window
+                            let mut x =
                                 pos.x - layout.bounds().x - self.padding.left - gutter_width as f32;
                             let y = pos.y - layout.bounds().y - self.padding.top;
+
+                            x += buffer_scroll.horizontal;
 
                             editor.action(
                                 &mut font_system,
