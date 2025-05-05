@@ -16,6 +16,7 @@ use std::{
 
 use crate::{Message, font_system, swash_cache};
 
+// widget vars for settings & input, state vars for generated state
 pub struct TabWidget<'a> {
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
@@ -38,7 +39,7 @@ pub fn tab_widget<'a>(
         metrics,
         click_timing: time::Duration::from_millis(500),
         auto_scroll: None,
-
+        // TODO support tabs, currently allows only space-indentation
         width: Length::Fill,
         height: Length::Fill,
         padding: Padding::new(5.0),
@@ -465,41 +466,7 @@ where
                         }
                         Binding::Backspace => {
                             self.start_new_change(&mut editor, state);
-                            // editor.action(&mut font_system, cosmic_text::Action::Backspace)
-                            if editor.delete_selection() {
-                                // selection deleted
-                            } else {
-                                editor.action(&mut font_system, cosmic_text::Action::Backspace);
-                                // let cursor = editor.cursor();
-                                // editor.tab_width();
-                                // editor.with_buffer(|buffer| {
-                                //     let pretext = buffer.lines[cursor.line].text()[..cursor.index];
-                                //     // buffer.lines[cursor.line].text()[..cursor.index];
-                                // });
-
-                                // let end = self.cursor;
-
-                                // if self.cursor.index > 0 {
-                                //     // Move cursor to previous character index
-                                //     self.cursor.index = self.with_buffer(|buffer| {
-                                //         buffer.lines[self.cursor.line].text()[..self.cursor.index]
-                                //             .char_indices()
-                                //             .next_back()
-                                //             .map_or(0, |(i, _)| i)
-                                //     });
-                                // } else if self.cursor.line > 0 {
-                                //     // Move cursor to previous line
-                                //     self.cursor.line -= 1;
-                                //     self.cursor.index = self.with_buffer(|buffer| {
-                                //         buffer.lines[self.cursor.line].text().len()
-                                //     });
-                                // }
-
-                                // if self.cursor != end {
-                                //     // Delete range
-                                //     self.delete_range(self.cursor, end);
-                                // }
-                            }
+                            editor.action(&mut font_system, cosmic_text::Action::Backspace);
                         }
                         Binding::Delete => {
                             self.start_new_change(&mut editor, state);

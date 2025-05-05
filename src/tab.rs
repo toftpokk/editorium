@@ -221,7 +221,7 @@ impl Tab {
         let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
 
         let mut editor = editor.borrow_with(&mut font_system);
-        editor.set_tab_width(8);
+        editor.set_tab_width(4);
         editor.set_auto_indent(true);
         editor.with_buffer_mut(|buffer| {
             buffer.set_wrap(cosmic_text::Wrap::None);
