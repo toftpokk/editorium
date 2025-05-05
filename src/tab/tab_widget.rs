@@ -763,8 +763,8 @@ where
                                             scroll_lines as f32 * buffer.metrics().font_size;
                                         scroll.horizontal = scroll
                                             .horizontal
-                                            .max(0.0)
-                                            .min(state.max_line_width.get() - buffer_w);
+                                            .min(state.max_line_width.get() - buffer_w)
+                                            .max(0.0);
 
                                         buffer.set_scroll(scroll);
                                     });
