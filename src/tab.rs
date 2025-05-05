@@ -155,12 +155,16 @@ impl Tab {
 
     pub fn open_file(&mut self, file_path: PathBuf) -> io::Result<()> {
         let mut font_system = FONT_SYSTEM.get().unwrap().write().unwrap();
-        self.editor
-            .write()
-            .unwrap()
-            .borrow_with(&mut font_system)
-            .load_text(file_path.clone(), self.attrs.clone())?;
-        // Note: open file speed limited by shape_as_needed and shape_until_scroll
+        let mut editor = self.editor.write().unwrap();
+        let mut editor = editor.borrow_with(&mut font_system);
+
+        // shape_until_scroll loads *all* text when height_opt = None
+        // this skips shaping entirely
+        editor.with_buffer_mut(|buffer| {
+            buffer.set_size(Some(0.0), Some(0.0));
+        });
+
+        editor.load_text(file_path.clone(), self.attrs.clone())?;
         self.file_path = Some(file_path);
         Ok(())
     }

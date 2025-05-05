@@ -123,8 +123,6 @@ where
         let mut font_system = font_system().write().expect("font system not writable");
         let mut editor = self.editor.write().expect("editor not writable");
 
-        editor.shape_as_needed(&mut font_system, false); // FIXME Scroll
-
         // width = self.limits
         // height =
         // if self.limits == shrink
@@ -226,7 +224,7 @@ where
         });
         state.max_line_width.replace(max_line_width);
 
-        // set metrics to buffer & set size of buffer (for mouse)
+        // set metrics to buffer & set size of buffer (for mouse) & optimize shape_as_needed
         editor.with_buffer_mut(|buffer| {
             buffer.set_metrics_and_size(
                 &mut font_system,
