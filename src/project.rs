@@ -5,7 +5,7 @@ use iced::{
     widget::{Column, button, text},
 };
 
-use crate::Message;
+use crate::{Message, theme};
 
 #[derive()]
 pub enum Error {
@@ -102,8 +102,8 @@ impl ProjectTree {
         return self.order.iter().position(|x| *x == id);
     }
 
-    pub fn view(&self) -> Column<Message> {
-        let nodes: Vec<Element<Message>> = self
+    pub fn view(&self) -> Column<Message, theme::MyTheme> {
+        let nodes: Vec<Element<Message, theme::MyTheme>> = self
             .order
             .iter()
             .map(|id| {
@@ -117,7 +117,7 @@ impl ProjectTree {
                             bottom: 0.0,
                             left: node.indent as f32 * 10.0,
                         })
-                        .style(button_style)
+                        // .style(button_style)
                         .into(),
                     NodeKind::Directory { .. } => button(text(&node.name))
                         .on_press(Message::ProjectTreeSelect(node.id))
@@ -127,7 +127,7 @@ impl ProjectTree {
                             bottom: 0.0,
                             left: node.indent as f32 * 10.0,
                         })
-                        .style(button_style)
+                        // .style(button_style)
                         .into(),
                 }
             })

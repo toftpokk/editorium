@@ -282,6 +282,7 @@ impl App {
             )
             .placeholder("Choose a Project"),
             button("Open File").on_press(Message::OpenFileSelector),
+            // .style(|theme, status| theme::primary(theme, status)),
             button("Open Dir").on_press(Message::OpenDirectorySelector) //     // current_project
                                                                         //     // current git branch
                                                                         //     // run
@@ -302,10 +303,10 @@ impl App {
                             horizontal: scrollable::Scrollbar::default().scroller_width(0).width(0),
                         }),
                 )
-                .style(|_| container::Style {
-                    background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-                    ..Default::default()
-                })
+                // .style(|_| container::Style {
+                //     background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
+                //     ..Default::default()
+                // })
             }
         })
         .width(Length::Fill)
@@ -313,7 +314,7 @@ impl App {
         .spacing(10)
         .on_resize(10, Message::PaneResized);
 
-        let content: Element<Message, theme::MyTheme> = column![nav_bar].into();
+        let content: Element<Message, theme::MyTheme> = column![nav_bar, pane_grid].into();
 
         // k.explain(iced::Color::WHITE)
         content

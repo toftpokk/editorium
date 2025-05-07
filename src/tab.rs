@@ -11,7 +11,7 @@ use iced::{Alignment, Element, Font, Length, Padding, Pixels, keyboard};
 use iced_aw::TabBar;
 use tab_widget::tab_widget;
 
-use crate::{FONT_SYSTEM, KEY_BINDINGS, Message, SYNTAX_SYSTEM};
+use crate::{FONT_SYSTEM, KEY_BINDINGS, Message, SYNTAX_SYSTEM, theme};
 
 mod tab_widget;
 
@@ -101,7 +101,7 @@ impl TabView {
         })
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<Message, theme::MyTheme> {
         let main = if let Some(active) = self.active {
             let tab = self.tabs.get(active).unwrap();
             tab.view()
@@ -195,7 +195,7 @@ impl Tab {
         });
     }
 
-    pub fn view(&self) -> Column<Message> {
+    pub fn view(&self) -> Column<Message, theme::MyTheme> {
         let w = tab_widget(&self.editor, self.metrics);
         Column::new().push(w)
     }
