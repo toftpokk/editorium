@@ -21,10 +21,10 @@ impl Catalog for MyTheme {
 }
 
 pub fn primary(theme: &MyTheme, status: Status) -> Style {
-    style(status, theme.text, theme.background, theme.background_light)
+    style(status, theme.text, theme.background, theme.text_inverse, theme.background_accent)
 }
 
-fn style(status: Status, fg: Color, bg: Color, bg_hover: Color) -> Style {
+fn style(status: Status, fg: Color, bg: Color, fg_hover: Color, bg_hover: Color) -> Style {
     match status {
          Status::Active => Style {
            background: Some(iced::Background::Color(bg)),
@@ -34,13 +34,13 @@ fn style(status: Status, fg: Color, bg: Color, bg_hover: Color) -> Style {
          },
          Status::Hovered => Style {
            background: Some(iced::Background::Color(bg_hover)),
-           text_color: fg,
+           text_color: fg_hover,
            border: Border::default(),
            shadow: Shadow::default(),
          },
          Status::Pressed => Style {
            background: Some(iced::Background::Color(bg_hover)),
-           text_color: fg,
+           text_color: fg_hover,
            border: Border::default(),
            shadow: Shadow::default(),
          },
