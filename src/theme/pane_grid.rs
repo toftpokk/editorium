@@ -17,9 +17,7 @@ impl Catalog for MyTheme {
 }
 
 pub fn primary(theme: &MyTheme) -> Style {
-    let fg = Color::from_rgb(0.0, 1.0, 0.0);
-
-    style(fg, fg, fg)
+    style(theme.text, theme.background, theme.background)
 }
 
 fn style(fg: Color, bg: Color, bg_hover: Color) -> Style {

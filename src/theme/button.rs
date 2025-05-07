@@ -21,22 +21,34 @@ impl Catalog for MyTheme {
 }
 
 pub fn primary(theme: &MyTheme, status: Status) -> Style {
-    let fg = Color::from_rgb(0.0, 1.0, 0.0);
-
-    style(fg, fg, fg, status)
+    style(status, theme.text, theme.background, theme.background_light)
 }
 
-fn style(fg: Color, bg: Color, bg_hover: Color, status: Status) -> Style {
-    // match status {
-    //     iced::widget::Status::Active => todo!(),
-    //     iced::widget::Status::Hovered => todo!(),
-    //     iced::widget::Status::Pressed => todo!(),
-    //     iced::widget::Status::Disabled => todo!(),
-    // }
-    Style {
-        background: Some(iced::Background::Color(bg)),
-        text_color: fg,
-        border: Border::default(),
-        shadow: Shadow::default(),
+fn style(status: Status, fg: Color, bg: Color, bg_hover: Color) -> Style {
+    match status {
+         Status::Active => Style {
+           background: Some(iced::Background::Color(bg)),
+           text_color: fg,
+           border: Border::default(),
+           shadow: Shadow::default(),
+         },
+         Status::Hovered => Style {
+           background: Some(iced::Background::Color(bg_hover)),
+           text_color: fg,
+           border: Border::default(),
+           shadow: Shadow::default(),
+         },
+         Status::Pressed => Style {
+           background: Some(iced::Background::Color(bg_hover)),
+           text_color: fg,
+           border: Border::default(),
+           shadow: Shadow::default(),
+         },
+         Status::Disabled => Style {
+           background: Some(iced::Background::Color(bg)),
+           text_color: fg,
+           border: Border::default(),
+           shadow: Shadow::default(),
+         },
     }
 }

@@ -12,8 +12,7 @@ use iced::{
     advanced::graphics::core::keyboard,
     event, time,
     widget::{
-        Container, PaneGrid, button, column, container, pane_grid, pick_list, row, scrollable,
-        text_editor,
+        Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable, text_editor,
     },
 };
 use iced_aw::iced_fonts;
@@ -342,7 +341,7 @@ impl App {
 
     // use mytheme as Theme
     fn theme(&self) -> theme::MyTheme {
-        theme::MyTheme {}
+        theme::MyTheme::default()
     }
 
     fn open_project(&mut self, path: PathBuf) {
