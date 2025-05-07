@@ -1,13 +1,7 @@
-use std::{
-    cmp::min,
-    collections::HashMap,
-    fmt::{self, format},
-    io,
-    path::PathBuf,
-};
+use std::{cmp::min, collections::HashMap, fmt, io, path::PathBuf};
 
 use iced::{
-    Color, Element, Padding, Theme,
+    Element, Padding,
     widget::{Column, button, text},
 };
 

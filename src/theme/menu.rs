@@ -1,7 +1,6 @@
 use super::MyTheme;
 use iced::{
     Border, Color,
-    widget::container,
     widget::overlay::menu::{Catalog, Style, StyleFn},
 };
 

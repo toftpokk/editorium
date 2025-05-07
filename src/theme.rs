@@ -1,4 +1,4 @@
-use iced::{daemon::DefaultStyle, widget, Border, Color, Shadow};
+use iced::{Color, daemon::DefaultStyle};
 
 mod button;
 mod container;

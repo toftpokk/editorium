@@ -3,17 +3,15 @@ use std::{
     fs,
     path::PathBuf,
     str::FromStr,
-    sync::{LazyLock, Once, OnceLock, RwLock},
+    sync::{OnceLock, RwLock},
 };
 
 use clap::Parser;
 use iced::{
-    Color, Element, Length, Subscription, Task, Theme,
+    Element, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
     event, time,
-    widget::{
-        Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable, text_editor,
-    },
+    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
 use iced_aw::iced_fonts;
 use key_binds::KeyBind;
@@ -42,7 +40,6 @@ fn swash_cache() -> &'static RwLock<cosmic_text::SwashCache> {
 #[derive(Debug, Clone)]
 enum Message {
     KeyPressed(keyboard::Modifiers, keyboard::Key),
-    Edit(text_editor::Action),
     OpenFileSelector,
     OpenDirectorySelector,
     OpenFile(PathBuf),
@@ -70,34 +67,6 @@ fn main() -> Result<(), iced::Error> {
         .theme(App::theme)
         .font(iced_fonts::REQUIRED_FONT_BYTES)
         .run_with(App::new)
-}
-
-fn button_style(_theme: &Theme, status: button::Status) -> button::Style
-where
-    Theme: button::Catalog,
-{
-    match status {
-        button::Status::Active => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Disabled => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Hovered => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Pressed => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2D, 0x43, 0x6E))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-    }
 }
 
 struct Pane {

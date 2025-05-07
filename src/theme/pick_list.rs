@@ -1,6 +1,6 @@
 use super::MyTheme;
 use iced::{
-    Border, Color, Shadow,
+    Border, Color,
     widget::pick_list::{Catalog, Status, Style, StyleFn},
 };
 

@@ -1,5 +1,5 @@
 use super::MyTheme;
-use iced::{Border, Color, border::Radius};
+use iced::{Color, border::Radius};
 use iced_aw::tab_bar::{Catalog, Status, Style, StyleFn};
 
 impl Catalog for MyTheme {

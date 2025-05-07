@@ -1,17 +1,14 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::RwLock;
 use std::{fs, io};
 
 use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
-use iced::advanced::graphics::text::{editor, font_system};
-use iced::keyboard::Modifiers;
-use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
-use iced::{Alignment, Element, Font, Length, Padding, Pixels, keyboard};
+use iced::widget::{Column, Scrollable, scrollable};
+use iced::{Element, Length};
 use iced_aw::TabBar;
 use tab_widget::tab_widget;
 
-use crate::{FONT_SYSTEM, KEY_BINDINGS, Message, SYNTAX_SYSTEM, theme};
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, theme};
 
 mod tab_widget;
 

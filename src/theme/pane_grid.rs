@@ -17,10 +17,10 @@ impl Catalog for MyTheme {
 }
 
 pub fn primary(theme: &MyTheme) -> Style {
-    style(theme.text, theme.background, theme.background)
+    style(theme.text, theme.background)
 }
 
-fn style(fg: Color, bg: Color, bg_hover: Color) -> Style {
+fn style(fg: Color, bg: Color) -> Style {
     Style {
         hovered_region: Highlight {
             background: iced::Background::Color(bg),

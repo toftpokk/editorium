@@ -1,9 +1,7 @@
-use cosmic_text::{
-    Attrs, AttrsList, BufferLine, Color, Edit, LineEnding, Metrics, Motion, SyntaxEditor,
-};
+use cosmic_text::{Attrs, AttrsList, BufferLine, Edit, LineEnding, Metrics, Motion, SyntaxEditor};
 use iced::{
     Element, Length, Padding, Rectangle, Size,
-    advanced::{Layout, Widget, image, layout, widget},
+    advanced::{Layout, Widget, graphics::text::editor, image, layout, widget},
     event::Status,
     keyboard, mouse,
 };
@@ -123,8 +121,8 @@ where
     ) -> layout::Node {
         let limits = limits.width(self.width).height(self.height);
 
-        let mut font_system = font_system().write().expect("font system not writable");
-        let mut editor = self.editor.write().expect("editor not writable");
+        let font_system = font_system().write().expect("font system not writable");
+        let editor = self.editor.write().expect("editor not writable");
 
         // width = self.limits
         // height =
@@ -448,6 +446,7 @@ where
 
         let mut font_system = font_system().write().expect("font system is not writable");
         let mut editor = self.editor.write().expect("editor is not writable");
+        let mut editor = editor.borrow_with(&mut font_system);
         let (buffer_size, buffer_scroll) =
             editor.with_buffer(|buffer| (buffer.size(), buffer.scroll()));
 
@@ -461,7 +460,7 @@ where
                     match binding {
                         Binding::Enter => {
                             self.start_new_change(&mut editor, state);
-                            editor.action(&mut font_system, cosmic_text::Action::Enter)
+                            editor.action(cosmic_text::Action::Enter)
                         }
                         Binding::Tab => {
                             self.start_new_change(&mut editor, state);
@@ -472,11 +471,11 @@ where
                         }
                         Binding::Backspace => {
                             self.start_new_change(&mut editor, state);
-                            editor.action(&mut font_system, cosmic_text::Action::Backspace);
+                            editor.action(cosmic_text::Action::Backspace);
                         }
                         Binding::Delete => {
                             self.start_new_change(&mut editor, state);
-                            editor.action(&mut font_system, cosmic_text::Action::Delete)
+                            editor.action(cosmic_text::Action::Delete)
                         }
                         Binding::BackspaceWord => {
                             self.start_new_change(&mut editor, state);
@@ -484,10 +483,9 @@ where
                                 // selection deleted
                             } else {
                                 let cursor_start = editor.cursor();
-                                editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Motion(cosmic_text::Motion::LeftWord),
-                                );
+                                editor.action(cosmic_text::Action::Motion(
+                                    cosmic_text::Motion::LeftWord,
+                                ));
                                 let cursor_end = editor.cursor();
                                 editor.delete_range(cursor_end, cursor_start);
                                 editor.set_cursor(cursor_end);
@@ -499,10 +497,9 @@ where
                                 // selection deleted
                             } else {
                                 let cursor_start = editor.cursor();
-                                editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Motion(cosmic_text::Motion::RightWord),
-                                );
+                                editor.action(cosmic_text::Action::Motion(
+                                    cosmic_text::Motion::RightWord,
+                                ));
                                 let cursor_end = editor.cursor();
                                 editor.delete_range(cursor_start, cursor_end);
                                 editor.set_cursor(cursor_start);
@@ -518,7 +515,7 @@ where
                             self.start_new_change(&mut editor, state);
                             if let Some(content) = editor.copy_selection() {
                                 clipboard.write(iced::advanced::clipboard::Kind::Standard, content);
-                                editor.action(&mut font_system, cosmic_text::Action::Delete);
+                                editor.action(cosmic_text::Action::Delete);
                             }
                         }
                         Binding::Paste => {
@@ -539,12 +536,11 @@ where
                                     BindingMotion::Home
                                     | BindingMotion::End
                                     | BindingMotion::DocumentStart
-                                    | BindingMotion::DocumentEnd => editor.action(
-                                        &mut font_system,
-                                        cosmic_text::Action::Motion(
+                                    | BindingMotion::DocumentEnd => {
+                                        editor.action(cosmic_text::Action::Motion(
                                             binding_motion.to_cosmic_motion(),
-                                        ),
-                                    ),
+                                        ))
+                                    }
 
                                     // set cursor to start/end of selection
                                     BindingMotion::Left
@@ -558,10 +554,9 @@ where
                                     | BindingMotion::WordRight => editor.set_cursor(end),
                                 }
                             } else {
-                                editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Motion(binding_motion.to_cosmic_motion()),
-                                )
+                                editor.action(cosmic_text::Action::Motion(
+                                    binding_motion.to_cosmic_motion(),
+                                ))
                             }
                         }
                         Binding::Select(binding_motion) => {
@@ -571,10 +566,9 @@ where
                                 editor.set_selection(cosmic_text::Selection::Normal(cursor));
                             }
 
-                            editor.action(
-                                &mut font_system,
-                                cosmic_text::Action::Motion(binding_motion.to_cosmic_motion()),
-                            );
+                            editor.action(cosmic_text::Action::Motion(
+                                binding_motion.to_cosmic_motion(),
+                            ));
 
                             // deselect if go back to same position
                             if let Some((start, end)) = editor.selection_bounds() {
@@ -606,10 +600,9 @@ where
                                     },
                                 ));
 
-                                editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Motion(cosmic_text::Motion::BufferEnd),
-                                );
+                                editor.action(cosmic_text::Action::Motion(
+                                    cosmic_text::Motion::BufferEnd,
+                                ));
                             }
                         }
                         Binding::Undo => {
@@ -682,27 +675,22 @@ where
                             };
 
                             match kind {
-                                ClickKind::Single => editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Click {
+                                ClickKind::Single => editor.action(cosmic_text::Action::Click {
+                                    x: x as i32,
+                                    y: y as i32,
+                                }),
+                                ClickKind::Double => {
+                                    editor.action(cosmic_text::Action::DoubleClick {
                                         x: x as i32,
                                         y: y as i32,
-                                    },
-                                ),
-                                ClickKind::Double => editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::DoubleClick {
+                                    })
+                                }
+                                ClickKind::Triple => {
+                                    editor.action(cosmic_text::Action::TripleClick {
                                         x: x as i32,
                                         y: y as i32,
-                                    },
-                                ),
-                                ClickKind::Triple => editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::TripleClick {
-                                        x: x as i32,
-                                        y: y as i32,
-                                    },
-                                ),
+                                    })
+                                }
                             }
                             state.click_last = Some((kind, Instant::now(), (x, y)));
                             state.dragging = true;
@@ -727,13 +715,10 @@ where
 
                             x += buffer_scroll.horizontal;
 
-                            editor.action(
-                                &mut font_system,
-                                cosmic_text::Action::Drag {
-                                    x: x as i32,
-                                    y: y as i32,
-                                },
-                            );
+                            editor.action(cosmic_text::Action::Drag {
+                                x: x as i32,
+                                y: y as i32,
+                            });
                             let auto_scroll = editor.with_buffer(|buffer| {
                                 //TODO: ideal auto scroll speed
                                 let speed = 1.01;
@@ -797,12 +782,9 @@ where
                         } else {
                             // scroll x and y
                             if lines_y != 0.0 {
-                                editor.action(
-                                    &mut font_system,
-                                    cosmic_text::Action::Scroll {
-                                        lines: lines_y as i32,
-                                    },
-                                );
+                                editor.action(cosmic_text::Action::Scroll {
+                                    lines: lines_y as i32,
+                                });
                             }
 
                             if x != 0.0 {
