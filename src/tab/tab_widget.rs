@@ -162,6 +162,7 @@ where
         _cursor: iced::advanced::mouse::Cursor,
         viewport: &Rectangle,
     ) {
+        let time_draw = Instant::now();
         let state = tree.state.downcast_ref::<State>();
 
         let mut font_system = font_system().write().expect("font system not writable");
@@ -237,6 +238,7 @@ where
             );
         });
 
+        // shaping takes 80% of the total drawing time, maybe behind redraw flag?
         // shape only necessary lines
         editor.shape_as_needed(&mut font_system, true);
 
@@ -279,8 +281,9 @@ where
                 gutter,
             );
 
+            // line number drawing is significant, maybe cache it?
             // draw line numbers
-            editor.with_buffer(|buffer| {
+            /*editor.with_buffer(|buffer| {
                 let mut last_line_number = 0;
                 for run in buffer.layout_runs() {
                     let line_number = run.line_i.saturating_add(1);
@@ -343,7 +346,7 @@ where
                         );
                     }
                 }
-            });
+            });*/
 
             // FIXME: cosmic text highlight lines until end of buffer, not end of line
             let scroll_x = editor.with_buffer(|buffer| buffer.scroll().horizontal as i32);
@@ -393,6 +396,7 @@ where
 
             renderer.draw_image(image, bounds);
         }
+        log::info!("draw time: {:02?}", time_draw.elapsed());
 
         // --- POC: font rendering with iced_font ----
         // Verdict: not possible because it renders once for all text, cannot use
@@ -708,8 +712,9 @@ where
                 }
                 iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) => {
                     state.dragging = false;
-                    status = Status::Captured;
                     self.auto_scroll = None;
+
+                    status = Status::Captured;
                     shell.publish(Message::SetAutoScroll(None));
                 }
                 iced::mouse::Event::CursorMoved { .. } => {
@@ -740,6 +745,7 @@ where
                                     None
                                 }
                             });
+                            status = Status::Captured;
                             shell.publish(Message::SetAutoScroll(auto_scroll));
                         }
                     }
@@ -765,46 +771,56 @@ where
                             }
                         };
 
-                        let lines_y = lines_y + state.parial_scroll;
+                        let mut lines_y = lines_y + state.parial_scroll;
                         state.parial_scroll = lines_y.fract();
+                        lines_y = lines_y.trunc();
 
                         // Note: mouse event + modifiers is still in PR https://github.com/iced-rs/iced/pull/2733
                         if state.modifiers_shift {
                             // scroll only y
-                            editor.with_buffer_mut(|buffer| {
-                                let mut scroll = buffer.scroll();
-                                let buffer_w = buffer.size().0.unwrap_or(0.0);
+                            // Note: skipping set_scroll/action makes it a tad faster
+                            if lines_y != 0.0 {
+                                editor.with_buffer_mut(|buffer| {
+                                    let mut scroll = buffer.scroll();
+                                    let buffer_w = buffer.size().0.unwrap_or(0.0);
 
-                                scroll.horizontal += lines_y as f32 * buffer.metrics().font_size;
-                                scroll.horizontal = scroll
-                                    .horizontal
-                                    .min(state.max_line_width.get() - buffer_w)
-                                    .max(0.0);
+                                    scroll.horizontal +=
+                                        lines_y as f32 * buffer.metrics().font_size;
+                                    scroll.horizontal = scroll
+                                        .horizontal
+                                        .min(state.max_line_width.get() - buffer_w)
+                                        .max(0.0);
 
-                                buffer.set_scroll(scroll);
-                            });
+                                    buffer.set_scroll(scroll);
+                                });
+                            }
                         } else {
                             // scroll x and y
-                            editor.action(
-                                &mut font_system,
-                                cosmic_text::Action::Scroll {
-                                    lines: lines_y as i32,
-                                },
-                            );
+                            if lines_y != 0.0 {
+                                editor.action(
+                                    &mut font_system,
+                                    cosmic_text::Action::Scroll {
+                                        lines: lines_y as i32,
+                                    },
+                                );
+                            }
 
-                            editor.with_buffer_mut(|buffer| {
-                                let mut scroll = buffer.scroll();
-                                let buffer_w = buffer.size().0.unwrap_or(0.0);
+                            if x != 0.0 {
+                                editor.with_buffer_mut(|buffer| {
+                                    let mut scroll = buffer.scroll();
+                                    let buffer_w = buffer.size().0.unwrap_or(0.0);
 
-                                scroll.horizontal += -x;
-                                scroll.horizontal = scroll
-                                    .horizontal
-                                    .min(state.max_line_width.get() - buffer_w)
-                                    .max(0.0);
+                                    scroll.horizontal += -x;
+                                    scroll.horizontal = scroll
+                                        .horizontal
+                                        .min(state.max_line_width.get() - buffer_w)
+                                        .max(0.0);
 
-                                buffer.set_scroll(scroll);
-                            });
+                                    buffer.set_scroll(scroll);
+                                });
+                            }
                         }
+                        status = Status::Captured;
                     }
                 }
                 _ => {}

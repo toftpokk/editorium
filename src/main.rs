@@ -63,6 +63,7 @@ fn main() -> Result<(), iced::Error> {
     SWASH_CACHE.get_or_init(|| RwLock::new(cosmic_text::SwashCache::new()));
     KEY_BINDINGS.get_or_init(|| key_binds::default());
 
+    // use editorium=debug to get only this crate
     env_logger::init();
     iced::application("Editorium", App::update, App::view)
         .subscription(App::subscription)
@@ -322,7 +323,6 @@ impl App {
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
-                print!("{:?} {:?} {:?}\n", modifiers, key, status);
                 match status {
                     event::Status::Captured => None,
                     event::Status::Ignored => Some(Message::KeyPressed(modifiers, key)),
