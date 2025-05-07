@@ -315,7 +315,7 @@ impl App {
 
         let content: Element<Message, theme::MyTheme> = column![nav_bar, pane_grid].into();
 
-        // k.explain(iced::Color::WHITE)
+        // content.explain(iced::Color::from_rgb(1.0, 0.0, 0.0))
         content
     }
 

@@ -1,4 +1,10 @@
-use std::{cmp::min, collections::HashMap, fmt, io, path::PathBuf};
+use std::{
+    cmp::min,
+    collections::HashMap,
+    fmt::{self, format},
+    io,
+    path::PathBuf,
+};
 
 use iced::{
     Color, Element, Padding, Theme,
@@ -112,23 +118,25 @@ impl ProjectTree {
                     NodeKind::File => button(text(&node.name))
                         .on_press(Message::OpenFile(node.path.to_owned()))
                         .padding(Padding {
-                            top: 0.0,
-                            right: 0.0,
-                            bottom: 0.0,
-                            left: node.indent as f32 * 10.0,
+                            top: 5.0,
+                            right: 5.0,
+                            bottom: 5.0,
+                            left: (node.indent as f32 + 1.0) * 15.0,
                         })
                         // .style(button_style)
                         .into(),
-                    NodeKind::Directory { .. } => button(text(&node.name))
-                        .on_press(Message::ProjectTreeSelect(node.id))
-                        .padding(Padding {
-                            top: 0.0,
-                            right: 0.0,
-                            bottom: 0.0,
-                            left: node.indent as f32 * 10.0,
-                        })
-                        // .style(button_style)
-                        .into(),
+                    NodeKind::Directory { .. } => {
+                        button(text(format!("> {}", node.name)))
+                            .on_press(Message::ProjectTreeSelect(node.id))
+                            .padding(Padding {
+                                top: 5.0,
+                                right: 5.0,
+                                bottom: 5.0,
+                                left: (node.indent as f32 + 1.0) * 15.0,
+                            })
+                            // .style(button_style)
+                            .into()
+                    }
                 }
             })
             .collect();
@@ -173,33 +181,5 @@ impl Node {
                 kind: NodeKind::File,
             }
         };
-    }
-}
-
-fn button_style(_theme: &Theme, status: button::Status) -> button::Style
-where
-    Theme: button::Catalog,
-{
-    match status {
-        button::Status::Active => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Disabled => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Hovered => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Pressed => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2D, 0x43, 0x6E))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
     }
 }

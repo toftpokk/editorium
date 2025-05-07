@@ -118,13 +118,24 @@ impl TabView {
                 tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
             })
             .on_close(Message::TabClose)
+            .width(Length::Shrink)
             .tab_width(Length::Shrink);
 
         if let Some(active) = self.active {
             tab_bar = tab_bar.set_active_tab(&active);
         }
 
-        Column::new().push(tab_bar).push(main).into()
+        Column::new()
+            .push(
+                Scrollable::new(tab_bar)
+                    .width(Length::Fill)
+                    .height(Length::Shrink)
+                    .direction(scrollable::Direction::Horizontal(
+                        scrollable::Scrollbar::default().scroller_width(0),
+                    )),
+            )
+            .push(main)
+            .into()
     }
 }
 

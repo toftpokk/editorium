@@ -18,15 +18,20 @@ impl Catalog for MyTheme {
 }
 
 pub fn primary(theme: &MyTheme) -> Style {
-    style(theme.text, theme.background)
+    style(
+        theme.text,
+        theme.background,
+        theme.text_inverse,
+        theme.background_accent,
+    )
 }
 
-fn style(fg: Color, bg: Color) -> Style {
+fn style(fg: Color, bg: Color, fg_selected: Color, bg_selected: Color) -> Style {
     Style {
         text_color: fg,
         background: iced::Background::Color(bg),
-        selected_text_color: fg,
-        selected_background: iced::Background::Color(bg),
+        selected_text_color: fg_selected,
+        selected_background: iced::Background::Color(bg_selected),
         border: Border::default(),
     }
 }

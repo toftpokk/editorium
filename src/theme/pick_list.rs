@@ -17,15 +17,38 @@ impl Catalog for MyTheme {
 }
 
 pub fn primary(theme: &MyTheme, status: Status) -> Style {
-    style(theme.text, theme.text, theme.background)
+    style(
+        status,
+        theme.text,
+        theme.text,
+        theme.background,
+        theme.text_inverse,
+        theme.background_accent,
+    )
 }
 
-fn style(fg: Color, fg_placeholder: Color, bg: Color) -> Style {
-    Style {
-        text_color: fg,
-        placeholder_color: fg_placeholder,
-        handle_color: Color::from_rgb(0.0, 1.0, 0.0),
-        background: iced::Background::Color(bg),
-        border: Border::default(),
+fn style(
+    status: Status,
+    fg: Color,
+    fg_placeholder: Color,
+    bg: Color,
+    fg_hover: Color,
+    bg_hover: Color,
+) -> Style {
+    match status {
+        Status::Hovered => Style {
+            text_color: fg_hover,
+            placeholder_color: fg_placeholder,
+            handle_color: Color::from_rgb(0.0, 1.0, 0.0),
+            background: iced::Background::Color(bg_hover),
+            border: Border::default(),
+        },
+        _ => Style {
+            text_color: fg,
+            placeholder_color: fg_placeholder,
+            handle_color: Color::from_rgb(0.0, 1.0, 0.0),
+            background: iced::Background::Color(bg),
+            border: Border::default(),
+        },
     }
 }
