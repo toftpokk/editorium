@@ -237,6 +237,7 @@ where
         });
 
         // shaping takes 80% of the total drawing time, maybe behind redraw flag?
+        // disabling syntax highlighting (using Editor instead) does *not* improve speed
         // shape only necessary lines
         editor.shape_as_needed(&mut font_system, true);
 
