@@ -24,6 +24,7 @@ mod cli;
 mod key_binds;
 mod project;
 mod tab;
+mod theme;
 
 // TODO move
 static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
@@ -262,7 +263,8 @@ impl App {
         Task::none()
     }
 
-    fn view(&self) -> Element<Message> {
+    // use mytheme as Theme
+    fn view(&self) -> Element<Message, theme::MyTheme> {
         let cwd = PathBuf::from_str("./").expect("could not get cwd");
         let cwd = match fs::canonicalize(cwd) {
             Ok(ok) => ok,
@@ -311,7 +313,7 @@ impl App {
         .spacing(10)
         .on_resize(10, Message::PaneResized);
 
-        let content: Element<Message> = column![nav_bar, pane_grid].into();
+        let content: Element<Message, theme::MyTheme> = column![nav_bar].into();
 
         // k.explain(iced::Color::WHITE)
         content
@@ -337,8 +339,9 @@ impl App {
         Subscription::batch(subscriptions)
     }
 
-    fn theme(&self) -> Theme {
-        Theme::CatppuccinFrappe
+    // use mytheme as Theme
+    fn theme(&self) -> theme::MyTheme {
+        theme::MyTheme {}
     }
 
     fn open_project(&mut self, path: PathBuf) {
