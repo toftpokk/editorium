@@ -6,11 +6,8 @@ use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
 use iced::widget::{Column, Scrollable, scrollable};
 use iced::{Element, Length};
 use iced_aw::TabBar;
-use tab_widget::tab_widget;
 
-use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, theme};
-
-mod tab_widget;
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, text_box, theme};
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
@@ -204,7 +201,7 @@ impl Tab {
     }
 
     pub fn view(&self) -> Column<Message, theme::MyTheme> {
-        let w = tab_widget(&self.editor, self.metrics);
+        let w = text_box::text_box(&self.editor, self.metrics);
         Column::new().push(w)
     }
 

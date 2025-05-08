@@ -1,7 +1,7 @@
 use cosmic_text::{Attrs, AttrsList, BufferLine, Edit, LineEnding, Metrics, Motion, SyntaxEditor};
 use iced::{
     Element, Length, Padding, Rectangle, Size,
-    advanced::{Layout, Widget, graphics::text::editor, image, layout, widget},
+    advanced::{Layout, Widget, image, layout, widget},
     event::Status,
     keyboard, mouse,
 };
@@ -15,7 +15,7 @@ use std::{
 use crate::{Message, font_system, swash_cache};
 
 // widget vars for settings & input, state vars for generated state
-pub struct TabWidget<'a> {
+pub struct TextBox<'a> {
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
 
@@ -27,23 +27,6 @@ pub struct TabWidget<'a> {
     width: Length,
     height: Length,
     padding: Padding,
-}
-
-pub fn tab_widget<'a>(
-    editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
-    metrics: Metrics,
-) -> TabWidget<'a> {
-    TabWidget {
-        editor,
-        metrics,
-        click_timing: time::Duration::from_millis(500),
-        auto_scroll: None,
-        line_number: true,
-        // TODO support tabs, currently allows only space-indentation
-        width: Length::Fill,
-        height: Length::Fill,
-        padding: Padding::new(5.0),
-    }
 }
 
 enum ClickKind {
@@ -84,7 +67,20 @@ impl State {
     }
 }
 
-impl<'a> TabWidget<'a> {
+impl<'a> TextBox<'a> {
+    pub fn new(editor: &'a RwLock<SyntaxEditor<'static, 'static>>, metrics: Metrics) -> Self {
+        Self {
+            editor,
+            metrics,
+            click_timing: time::Duration::from_millis(500),
+            auto_scroll: None,
+            line_number: true,
+            // TODO support tabs, currently allows only space-indentation
+            width: Length::Fill,
+            height: Length::Fill,
+            padding: Padding::new(5.0),
+        }
+    }
     fn finish_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
         if state.redo_buffer.len() > 0 {
             state.redo_buffer.clear();
@@ -99,7 +95,7 @@ impl<'a> TabWidget<'a> {
     }
 }
 
-impl<'a, Theme, Renderer> Widget<Message, Theme, Renderer> for TabWidget<'a>
+impl<'a, Theme, Renderer> Widget<Message, Theme, Renderer> for TextBox<'a>
 where
     Renderer:
         image::Renderer<Handle = image::Handle> + iced::advanced::text::Renderer<Font = iced::Font>,
@@ -861,12 +857,12 @@ where
     }
 }
 
-impl<'a, Theme, Renderer> From<TabWidget<'a>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Theme, Renderer> From<TextBox<'a>> for Element<'a, Message, Theme, Renderer>
 where
     Renderer: image::Renderer<Handle = iced::advanced::image::Handle>
         + iced::advanced::text::Renderer<Font = iced::Font>,
 {
-    fn from(value: TabWidget<'a>) -> Self {
+    fn from(value: TextBox<'a>) -> Self {
         Self::new(value)
     }
 }

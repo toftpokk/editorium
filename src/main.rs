@@ -21,6 +21,7 @@ mod cli;
 mod key_binds;
 mod project;
 mod tab;
+mod text_box;
 mod theme;
 
 // TODO move
