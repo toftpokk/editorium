@@ -8,7 +8,7 @@ use std::{
 
 use clap::Parser;
 use iced::{
-    Element, Length, Subscription, Task,
+    Element, Font, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
     event, time,
     widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
@@ -28,6 +28,20 @@ static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
 static SYNTAX_SYSTEM: OnceLock<cosmic_text::SyntaxSystem> = OnceLock::new();
 static SWASH_CACHE: OnceLock<RwLock<cosmic_text::SwashCache>> = OnceLock::new();
 static KEY_BINDINGS: OnceLock<HashMap<KeyBind, Message>> = OnceLock::new();
+// TODO move
+// Ref: https://github.com/danielmbomfim/iced_font_awesome/
+const ICON_BYTES_REGULAR: &[u8] = include_bytes!("../fonts/font-awesome.otf");
+const ICON_FONT_REGULAR: Font = Font {
+    family: iced::font::Family::Name("Font Awesome 6 Free"),
+    ..iced::Font::DEFAULT
+};
+
+const ICON_BYTES_SOLID: &[u8] = include_bytes!("../fonts/font-awesome-solid.otf");
+const ICON_FONT_SOLID: Font = Font {
+    family: iced::font::Family::Name("Font Awesome 6 Free"),
+    weight: iced::font::Weight::Black,
+    ..iced::Font::DEFAULT
+};
 
 fn font_system() -> &'static RwLock<cosmic_text::FontSystem> {
     FONT_SYSTEM.get().unwrap()
@@ -66,6 +80,8 @@ fn main() -> Result<(), iced::Error> {
         .subscription(App::subscription)
         .theme(App::theme)
         .font(iced_fonts::REQUIRED_FONT_BYTES)
+        .font(ICON_BYTES_REGULAR)
+        .font(ICON_BYTES_SOLID)
         .run_with(App::new)
 }
 
@@ -249,6 +265,23 @@ impl App {
                 self.current_project.clone(),
                 |project: project::Project| Message::OpenProject(project.path),
             )
+            .handle(pick_list::Handle::Dynamic {
+                closed: pick_list::Icon {
+                    font: ICON_FONT_SOLID,
+                    code_point: '\u{f0d7}',
+                    size: None,
+                    line_height: iced::widget::text::LineHeight::default(),
+                    shaping: iced::widget::text::Shaping::Basic,
+                },
+                open: pick_list::Icon {
+                    font: ICON_FONT_SOLID,
+                    // todo: list of codepoints used
+                    code_point: '\u{f0da}',
+                    size: None,
+                    line_height: iced::widget::text::LineHeight::default(),
+                    shaping: iced::widget::text::Shaping::Basic,
+                }
+            })
             .placeholder("Choose a Project"),
             button("Open File").on_press(Message::OpenFileSelector),
             // .style(|theme, status| theme::primary(theme, status)),

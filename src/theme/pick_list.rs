@@ -39,14 +39,14 @@ fn style(
         Status::Hovered => Style {
             text_color: fg_hover,
             placeholder_color: fg_placeholder,
-            handle_color: Color::from_rgb(0.0, 1.0, 0.0),
+            handle_color: fg,
             background: iced::Background::Color(bg_hover),
             border: Border::default(),
         },
         _ => Style {
             text_color: fg,
             placeholder_color: fg_placeholder,
-            handle_color: Color::from_rgb(0.0, 1.0, 0.0),
+            handle_color: fg,
             background: iced::Background::Color(bg),
             border: Border::default(),
         },

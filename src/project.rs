@@ -2,10 +2,10 @@ use std::{cmp::min, collections::HashMap, fmt, io, path::PathBuf};
 
 use iced::{
     Element, Padding,
-    widget::{Column, button, text},
+    widget::{Column, Row, button, text},
 };
 
-use crate::{Message, theme};
+use crate::{ICON_FONT_SOLID, Message, theme};
 
 #[derive()]
 pub enum Error {
@@ -117,20 +117,35 @@ impl ProjectTree {
                             bottom: 5.0,
                             left: (node.indent as f32 + 1.0) * 15.0,
                         })
-                        // .style(button_style)
                         .into(),
-                    NodeKind::Directory { .. } => {
-                        button(text(format!("> {}", node.name)))
-                            .on_press(Message::ProjectTreeSelect(node.id))
-                            .padding(Padding {
-                                top: 5.0,
-                                right: 5.0,
-                                bottom: 5.0,
-                                left: (node.indent as f32 + 1.0) * 15.0,
-                            })
-                            // .style(button_style)
-                            .into()
-                    }
+                    NodeKind::Directory { open: true, .. } => button(
+                        Row::new()
+                            .push(text('\u{f105}').font(ICON_FONT_SOLID).width(15.0))
+                            .push(text(&node.name))
+                            .spacing(4.0),
+                    )
+                    .on_press(Message::ProjectTreeSelect(node.id))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 5.0,
+                        bottom: 5.0,
+                        left: (node.indent as f32 + 1.0) * 15.0,
+                    })
+                    .into(),
+                    NodeKind::Directory { open: false, .. } => button(
+                        Row::new()
+                            .push(text('\u{f107}').font(ICON_FONT_SOLID).width(15.0))
+                            .push(text(&node.name))
+                            .spacing(4.0),
+                    )
+                    .on_press(Message::ProjectTreeSelect(node.id))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 5.0,
+                        bottom: 5.0,
+                        left: (node.indent as f32 + 1.0) * 15.0,
+                    })
+                    .into(),
                 }
             })
             .collect();
