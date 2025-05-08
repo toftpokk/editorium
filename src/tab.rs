@@ -3,8 +3,9 @@ use std::sync::RwLock;
 use std::{fs, io};
 
 use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
-use iced::widget::{Column, Scrollable, scrollable};
-use iced::{Element, Length};
+use iced::advanced::widget::operate;
+use iced::widget::{self, Column, Scrollable, scrollable, text_input};
+use iced::{Element, Length, Task, advanced};
 use iced_aw::TabBar;
 
 use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, text_box, theme};
@@ -133,12 +134,20 @@ impl TabView {
     }
 }
 
+pub struct Search {
+    id: text_input::Id,
+    text: String,
+}
+
 pub struct Tab {
     pub file_path: Option<PathBuf>,
 
     editor: RwLock<SyntaxEditor<'static, 'static>>, // RwLock allows writing during draw
     attrs: Attrs<'static>,
     metrics: Metrics,
+    text_box_id: iced::advanced::widget::Id,
+    search: Search,
+    search_open: bool,
 }
 
 impl Tab {
@@ -154,6 +163,12 @@ impl Tab {
             editor: RwLock::new(editor),
             attrs,
             metrics,
+            search: Search {
+                id: text_input::Id::unique(),
+                text: "".to_string(),
+            },
+            search_open: false,
+            text_box_id: advanced::widget::Id::unique(),
         };
         tab.set_config();
 
@@ -191,6 +206,24 @@ impl Tab {
         Ok(())
     }
 
+    pub fn search_open(&mut self, text: Option<String>) -> Task<Message> {
+        if let Some(text) = text {
+            self.search.text = text;
+        }
+        // note: text seach is a good example of how events flow
+        // also: editor is a good example of how leaf nodes work (widgets)
+        self.search_open = true;
+        widget::text_input::focus(self.search.id.clone())
+    }
+
+    pub fn search_close(&mut self) -> Task<Message> {
+        self.search_open = false;
+        // lifesaver: https://jl710.github.io/iced-guide/widget_api/operations.html
+        operate(advanced::widget::operation::focusable::focus(
+            self.text_box_id.clone(),
+        ))
+    }
+
     pub fn scroll(&mut self, scroll: f32) {
         let mut editor = self.editor.write().unwrap();
         editor.with_buffer_mut(|buffer| {
@@ -201,8 +234,16 @@ impl Tab {
     }
 
     pub fn view(&self) -> Column<Message, theme::MyTheme> {
-        let w = text_box::text_box(&self.editor, self.metrics);
-        Column::new().push(w)
+        let mut col = Column::new();
+        if self.search_open {
+            col = col.push(
+                text_input("Find Something...", &self.search.text)
+                    .on_input(Message::TabSearch)
+                    .id(self.search.id.clone()),
+            )
+        }
+
+        col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
     }
 
     pub fn redraw(&self) {

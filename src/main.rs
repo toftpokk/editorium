@@ -11,7 +11,7 @@ use iced::{
     Element, Font, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
     event, time,
-    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
+    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable, stack},
 };
 use iced_aw::iced_fonts;
 use key_binds::KeyBind;
@@ -62,6 +62,9 @@ enum Message {
     TabSelected(usize),
     TabClose(usize),
     TabCloseCurrent,
+    TabSearch(String),
+    TabSearchOpen,
+    TabSearchClose,
     PaneResized(pane_grid::ResizeEvent),
     ProjectTreeSelect(usize),
     SaveFile,
@@ -139,7 +142,11 @@ impl App {
         };
 
         if let Some(path) = cli.path {
-            app.open_file(path);
+            if path.is_dir() {
+                app.open_project(path);
+            } else {
+                app.open_file(path);
+            }
         }
 
         (app, Task::none())
@@ -163,7 +170,7 @@ impl App {
             }
             Message::TabSelected(tab) => {
                 self.tabs.activate(tab);
-                self.update_tab();
+                self.redraw_active_editor();
             }
             Message::OpenProject(project) => self.open_project(project),
             Message::OpenFile(file_path) => self.open_file(file_path),
@@ -179,12 +186,30 @@ impl App {
             Message::TabCloseCurrent => {
                 if let Some(active) = self.tabs.active() {
                     self.tabs.remove(active);
-                    self.update_tab();
+                    self.redraw_active_editor();
                 }
             }
             Message::TabClose(tab) => {
                 self.tabs.remove(tab);
-                self.update_tab();
+                self.redraw_active_editor();
+            }
+            Message::TabSearch(text) => {
+                if let Some(active) = self.tabs.active() {
+                    let tab = self.tabs.tab_mut(active).unwrap();
+                    return tab.search_open(Some(text));
+                }
+            }
+            Message::TabSearchOpen => {
+                if let Some(active) = self.tabs.active() {
+                    let tab = self.tabs.tab_mut(active).unwrap();
+                    return tab.search_open(None);
+                }
+            }
+            Message::TabSearchClose => {
+                if let Some(active) = self.tabs.active() {
+                    let tab = self.tabs.tab_mut(active).unwrap();
+                    return tab.search_close();
+                }
             }
             Message::KeyPressed(modifier, key) => {
                 if let Some(value) = KEY_BINDINGS.get().unwrap().get(&key_binds::KeyBind {
@@ -318,6 +343,7 @@ impl App {
         content
     }
 
+    // note: events seem to call on everybody's on_event, with subscription last
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
@@ -353,7 +379,7 @@ impl App {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
         if let Some(pos) = self.tabs.position(file_path.clone()) {
             self.tabs.activate(pos);
-            self.update_tab();
+            self.redraw_active_editor();
             return;
         }
         let index = match self.tabs.insert(Some(file_path)) {
@@ -364,10 +390,10 @@ impl App {
             }
         };
         self.tabs.activate(index);
-        self.update_tab()
+        self.redraw_active_editor()
     }
 
-    fn update_tab(&mut self) {
+    fn redraw_active_editor(&mut self) {
         if let Some(active) = self.tabs.active() {
             let tab = self.tabs.tab_mut(active).unwrap();
             tab.redraw();

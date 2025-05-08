@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use iced::keyboard::{Key, Modifiers};
+use iced::keyboard::{Key, Modifiers, key};
 
 use crate::Message;
 
@@ -48,6 +48,13 @@ pub fn default() -> HashMap<KeyBind, Message> {
             key: Key::Character("3".into()),
         },
         Message::TabSelected(2),
+    );
+    key_bind.insert(
+        KeyBind {
+            modifiers: Modifiers::CTRL,
+            key: Key::Character("f".into()),
+        },
+        Message::TabSearchOpen,
     );
 
     key_bind

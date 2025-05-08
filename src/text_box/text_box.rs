@@ -3,7 +3,7 @@ use iced::{
     Element, Length, Padding, Rectangle, Size,
     advanced::{
         Layout, Widget, image, layout,
-        widget::{self, operation},
+        widget::{self, Id, operation},
     },
     event::Status,
     keyboard, mouse,
@@ -19,6 +19,7 @@ use crate::{Message, font_system, swash_cache};
 
 // widget vars for settings & input, state vars for generated state
 pub struct TextBox<'a> {
+    id: Option<Id>,
     editor: &'a RwLock<SyntaxEditor<'static, 'static>>,
     metrics: Metrics,
 
@@ -38,57 +39,10 @@ enum ClickKind {
     Triple,
 }
 
-struct State {
-    dragging: bool,
-    // last click
-    click_last: Option<(ClickKind, time::Instant, (f32, f32))>,
-    undo_buffer: Vec<cosmic_text::Change>,
-    redo_buffer: Vec<cosmic_text::Change>,
-    // gutter_width set on first draw
-    // is a Cell because written in draw
-    gutter_width: Cell<i32>,
-    max_line_width: Cell<f32>,
-    render_handle: RefCell<Option<image::Handle>>,
-    parial_scroll: f32,
-    focused: bool,
-
-    modifiers_shift: bool, // solely for shift scroll
-}
-
-impl State {
-    fn new() -> Self {
-        Self {
-            dragging: false,
-            click_last: None,
-            undo_buffer: Vec::new(),
-            redo_buffer: Vec::new(),
-            gutter_width: Cell::new(0),
-            render_handle: RefCell::new(None),
-            modifiers_shift: false,
-            max_line_width: Cell::new(0.0),
-            parial_scroll: 0.0,
-            focused: false,
-        }
-    }
-}
-
-impl operation::Focusable for State {
-    fn is_focused(&self) -> bool {
-        self.focused
-    }
-
-    fn focus(&mut self) {
-        self.focused = true
-    }
-
-    fn unfocus(&mut self) {
-        self.focused = false
-    }
-}
-
 impl<'a> TextBox<'a> {
     pub fn new(editor: &'a RwLock<SyntaxEditor<'static, 'static>>, metrics: Metrics) -> Self {
         Self {
+            id: None,
             editor,
             metrics,
             click_timing: time::Duration::from_millis(500),
@@ -100,6 +54,12 @@ impl<'a> TextBox<'a> {
             padding: Padding::new(5.0),
         }
     }
+
+    pub fn id(mut self, id: Id) -> Self {
+        self.id = Some(id);
+        self
+    }
+
     fn finish_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
         if state.redo_buffer.len() > 0 {
             state.redo_buffer.clear();
@@ -485,7 +445,11 @@ where
                 if !state.focused {
                     // skip
                 } else if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
+                    // if binding exists, assume captured
                     match binding {
+                        Binding::Escape => {
+                            shell.publish(Message::TabSearchClose);
+                        }
                         Binding::Enter => {
                             self.start_new_change(&mut editor, state);
                             editor.action(cosmic_text::Action::Enter)
@@ -852,6 +816,18 @@ where
         status
     }
 
+    fn operate(
+        &self,
+        tree: &mut widget::Tree,
+        _layout: Layout<'_>,
+        _renderer: &Renderer,
+        operation: &mut dyn widget::Operation,
+    ) {
+        let state = tree.state.downcast_mut::<State>();
+
+        operation.focusable(state, self.id.as_ref());
+    }
+
     fn mouse_interaction(
         &self,
         tree: &widget::Tree,
@@ -892,8 +868,57 @@ where
     }
 }
 
+struct State {
+    dragging: bool,
+    // last click
+    click_last: Option<(ClickKind, time::Instant, (f32, f32))>,
+    undo_buffer: Vec<cosmic_text::Change>,
+    redo_buffer: Vec<cosmic_text::Change>,
+    // gutter_width set on first draw
+    // is a Cell because written in draw
+    gutter_width: Cell<i32>,
+    max_line_width: Cell<f32>,
+    render_handle: RefCell<Option<image::Handle>>,
+    parial_scroll: f32,
+    focused: bool,
+
+    modifiers_shift: bool, // solely for shift scroll
+}
+
+impl State {
+    fn new() -> Self {
+        Self {
+            dragging: false,
+            click_last: None,
+            undo_buffer: Vec::new(),
+            redo_buffer: Vec::new(),
+            gutter_width: Cell::new(0),
+            render_handle: RefCell::new(None),
+            modifiers_shift: false,
+            max_line_width: Cell::new(0.0),
+            parial_scroll: 0.0,
+            focused: false,
+        }
+    }
+}
+
+impl operation::Focusable for State {
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn focus(&mut self) {
+        self.focused = true
+    }
+
+    fn unfocus(&mut self) {
+        self.focused = false
+    }
+}
+
 // event -> binding -> editor.action
 pub enum Binding {
+    Escape,
     Enter,
     Tab,
     Unindent,
@@ -964,6 +989,7 @@ impl Binding {
     fn from_keyboard_event(event: iced::keyboard::Event) -> Option<Self> {
         match event {
             keyboard::Event::KeyPressed { key, modifiers, .. } => match key.as_ref() {
+                keyboard::Key::Named(keyboard::key::Named::Escape) => Some(Self::Escape),
                 keyboard::Key::Named(keyboard::key::Named::Enter) => Some(Self::Enter),
                 keyboard::Key::Named(keyboard::key::Named::Tab) if modifiers.shift() => {
                     Some(Self::Unindent)
@@ -983,7 +1009,6 @@ impl Binding {
                         Some(Self::Delete)
                     }
                 }
-                keyboard::Key::Named(keyboard::key::Named::Escape) => Some(Self::Unfocus),
                 keyboard::Key::Character("c") if modifiers.command() => Some(Self::Copy),
                 keyboard::Key::Character("x") if modifiers.command() => Some(Self::Cut),
                 keyboard::Key::Character("v") if modifiers.command() => Some(Self::Paste),

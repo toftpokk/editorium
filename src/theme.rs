@@ -8,6 +8,7 @@ mod pick_list;
 mod scrollable;
 mod tab_bar;
 mod text;
+mod text_input;
 
 // iced::Theme requires a default
 pub struct MyTheme {
