@@ -1,11 +1,11 @@
 use std::{cmp::min, collections::HashMap, fmt, io, path::PathBuf};
 
 use iced::{
-    Color, Element, Padding, Theme,
-    widget::{Column, button, text},
+    Element, Padding,
+    widget::{Column, Row, button, text},
 };
 
-use crate::Message;
+use crate::{ICON_FONT_SOLID, Message, theme};
 
 #[derive()]
 pub enum Error {
@@ -102,8 +102,8 @@ impl ProjectTree {
         return self.order.iter().position(|x| *x == id);
     }
 
-    pub fn view(&self) -> Column<Message> {
-        let nodes: Vec<Element<Message>> = self
+    pub fn view(&self) -> Column<Message, theme::MyTheme> {
+        let nodes: Vec<Element<Message, theme::MyTheme>> = self
             .order
             .iter()
             .map(|id| {
@@ -112,23 +112,40 @@ impl ProjectTree {
                     NodeKind::File => button(text(&node.name))
                         .on_press(Message::OpenFile(node.path.to_owned()))
                         .padding(Padding {
-                            top: 0.0,
-                            right: 0.0,
-                            bottom: 0.0,
-                            left: node.indent as f32 * 10.0,
+                            top: 5.0,
+                            right: 5.0,
+                            bottom: 5.0,
+                            left: (node.indent as f32 + 1.0) * 15.0,
                         })
-                        .style(button_style)
                         .into(),
-                    NodeKind::Directory { .. } => button(text(&node.name))
-                        .on_press(Message::ProjectTreeSelect(node.id))
-                        .padding(Padding {
-                            top: 0.0,
-                            right: 0.0,
-                            bottom: 0.0,
-                            left: node.indent as f32 * 10.0,
-                        })
-                        .style(button_style)
-                        .into(),
+                    NodeKind::Directory { open: true, .. } => button(
+                        Row::new()
+                            .push(text('\u{f105}').font(ICON_FONT_SOLID).width(15.0))
+                            .push(text(&node.name))
+                            .spacing(4.0),
+                    )
+                    .on_press(Message::ProjectTreeSelect(node.id))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 5.0,
+                        bottom: 5.0,
+                        left: (node.indent as f32 + 1.0) * 15.0,
+                    })
+                    .into(),
+                    NodeKind::Directory { open: false, .. } => button(
+                        Row::new()
+                            .push(text('\u{f107}').font(ICON_FONT_SOLID).width(15.0))
+                            .push(text(&node.name))
+                            .spacing(4.0),
+                    )
+                    .on_press(Message::ProjectTreeSelect(node.id))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 5.0,
+                        bottom: 5.0,
+                        left: (node.indent as f32 + 1.0) * 15.0,
+                    })
+                    .into(),
                 }
             })
             .collect();
@@ -173,33 +190,5 @@ impl Node {
                 kind: NodeKind::File,
             }
         };
-    }
-}
-
-fn button_style(_theme: &Theme, status: button::Status) -> button::Style
-where
-    Theme: button::Catalog,
-{
-    match status {
-        button::Status::Active => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Disabled => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Hovered => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Pressed => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2D, 0x43, 0x6E))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
     }
 }

@@ -1,19 +1,13 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::RwLock;
 use std::{fs, io};
 
 use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
-use iced::advanced::graphics::text::{editor, font_system};
-use iced::keyboard::Modifiers;
-use iced::widget::{Column, Row, Scrollable, column, container, row, scrollable, text};
-use iced::{Alignment, Element, Font, Length, Padding, Pixels, keyboard};
+use iced::widget::{Column, Scrollable, scrollable};
+use iced::{Element, Length};
 use iced_aw::TabBar;
-use tab_widget::tab_widget;
 
-use crate::{FONT_SYSTEM, KEY_BINDINGS, Message, SYNTAX_SYSTEM};
-
-mod tab_widget;
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, text_box, theme};
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
@@ -101,7 +95,7 @@ impl TabView {
         })
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<Message, theme::MyTheme> {
         let main = if let Some(active) = self.active {
             let tab = self.tabs.get(active).unwrap();
             tab.view()
@@ -118,13 +112,24 @@ impl TabView {
                 tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
             })
             .on_close(Message::TabClose)
+            .width(Length::Shrink)
             .tab_width(Length::Shrink);
 
         if let Some(active) = self.active {
             tab_bar = tab_bar.set_active_tab(&active);
         }
 
-        Column::new().push(tab_bar).push(main).into()
+        Column::new()
+            .push(
+                Scrollable::new(tab_bar)
+                    .width(Length::Fill)
+                    .height(Length::Shrink)
+                    .direction(scrollable::Direction::Horizontal(
+                        scrollable::Scrollbar::default().scroller_width(0),
+                    )),
+            )
+            .push(main)
+            .into()
     }
 }
 
@@ -195,8 +200,8 @@ impl Tab {
         });
     }
 
-    pub fn view(&self) -> Column<Message> {
-        let w = tab_widget(&self.editor, self.metrics);
+    pub fn view(&self) -> Column<Message, theme::MyTheme> {
+        let w = text_box::text_box(&self.editor, self.metrics);
         Column::new().push(w)
     }
 

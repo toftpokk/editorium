@@ -3,18 +3,15 @@ use std::{
     fs,
     path::PathBuf,
     str::FromStr,
-    sync::{LazyLock, Once, OnceLock, RwLock},
+    sync::{OnceLock, RwLock},
 };
 
 use clap::Parser;
 use iced::{
-    Color, Element, Length, Subscription, Task, Theme,
+    Element, Font, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
     event, time,
-    widget::{
-        Container, PaneGrid, button, column, container, pane_grid, pick_list, row, scrollable,
-        text_editor,
-    },
+    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
 use iced_aw::iced_fonts;
 use key_binds::KeyBind;
@@ -24,12 +21,28 @@ mod cli;
 mod key_binds;
 mod project;
 mod tab;
+mod text_box;
+mod theme;
 
 // TODO move
 static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
 static SYNTAX_SYSTEM: OnceLock<cosmic_text::SyntaxSystem> = OnceLock::new();
 static SWASH_CACHE: OnceLock<RwLock<cosmic_text::SwashCache>> = OnceLock::new();
 static KEY_BINDINGS: OnceLock<HashMap<KeyBind, Message>> = OnceLock::new();
+// TODO move
+// Ref: https://github.com/danielmbomfim/iced_font_awesome/
+const ICON_BYTES_REGULAR: &[u8] = include_bytes!("../fonts/font-awesome.otf");
+const ICON_FONT_REGULAR: Font = Font {
+    family: iced::font::Family::Name("Font Awesome 6 Free"),
+    ..iced::Font::DEFAULT
+};
+
+const ICON_BYTES_SOLID: &[u8] = include_bytes!("../fonts/font-awesome-solid.otf");
+const ICON_FONT_SOLID: Font = Font {
+    family: iced::font::Family::Name("Font Awesome 6 Free"),
+    weight: iced::font::Weight::Black,
+    ..iced::Font::DEFAULT
+};
 
 fn font_system() -> &'static RwLock<cosmic_text::FontSystem> {
     FONT_SYSTEM.get().unwrap()
@@ -42,7 +55,6 @@ fn swash_cache() -> &'static RwLock<cosmic_text::SwashCache> {
 #[derive(Debug, Clone)]
 enum Message {
     KeyPressed(keyboard::Modifiers, keyboard::Key),
-    Edit(text_editor::Action),
     OpenFileSelector,
     OpenDirectorySelector,
     OpenFile(PathBuf),
@@ -63,40 +75,15 @@ fn main() -> Result<(), iced::Error> {
     SWASH_CACHE.get_or_init(|| RwLock::new(cosmic_text::SwashCache::new()));
     KEY_BINDINGS.get_or_init(|| key_binds::default());
 
+    // use editorium=debug to get only this crate
     env_logger::init();
     iced::application("Editorium", App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
         .font(iced_fonts::REQUIRED_FONT_BYTES)
+        .font(ICON_BYTES_REGULAR)
+        .font(ICON_BYTES_SOLID)
         .run_with(App::new)
-}
-
-fn button_style(_theme: &Theme, status: button::Status) -> button::Style
-where
-    Theme: button::Catalog,
-{
-    match status {
-        button::Status::Active => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Disabled => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Hovered => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-        button::Status::Pressed => button::Style {
-            background: Some(iced::Background::Color(Color::from_rgb8(0x2D, 0x43, 0x6E))),
-            text_color: Color::from_rgb8(0xDF, 0xE1, 0xE5),
-            ..Default::default()
-        },
-    }
 }
 
 struct Pane {
@@ -262,7 +249,8 @@ impl App {
         Task::none()
     }
 
-    fn view(&self) -> Element<Message> {
+    // use mytheme as Theme
+    fn view(&self) -> Element<Message, theme::MyTheme> {
         let cwd = PathBuf::from_str("./").expect("could not get cwd");
         let cwd = match fs::canonicalize(cwd) {
             Ok(ok) => ok,
@@ -278,6 +266,23 @@ impl App {
                 self.current_project.clone(),
                 |project: project::Project| Message::OpenProject(project.path),
             )
+            .handle(pick_list::Handle::Dynamic {
+                closed: pick_list::Icon {
+                    font: ICON_FONT_SOLID,
+                    code_point: '\u{f0d7}',
+                    size: None,
+                    line_height: iced::widget::text::LineHeight::default(),
+                    shaping: iced::widget::text::Shaping::Basic,
+                },
+                open: pick_list::Icon {
+                    font: ICON_FONT_SOLID,
+                    // todo: list of codepoints used
+                    code_point: '\u{f0da}',
+                    size: None,
+                    line_height: iced::widget::text::LineHeight::default(),
+                    shaping: iced::widget::text::Shaping::Basic,
+                }
+            })
             .placeholder("Choose a Project"),
             button("Open File").on_press(Message::OpenFileSelector),
             button("Open Dir").on_press(Message::OpenDirectorySelector) //     // current_project
@@ -300,10 +305,6 @@ impl App {
                             horizontal: scrollable::Scrollbar::default().scroller_width(0).width(0),
                         }),
                 )
-                .style(|_| container::Style {
-                    background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-                    ..Default::default()
-                })
             }
         })
         .width(Length::Fill)
@@ -311,16 +312,15 @@ impl App {
         .spacing(10)
         .on_resize(10, Message::PaneResized);
 
-        let content: Element<Message> = column![nav_bar, pane_grid].into();
+        let content: Element<Message, theme::MyTheme> = column![nav_bar, pane_grid].into();
 
-        // k.explain(iced::Color::WHITE)
+        // content.explain(iced::Color::from_rgb(1.0, 0.0, 0.0))
         content
     }
 
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
-                print!("{:?} {:?} {:?}\n", modifiers, key, status);
                 match status {
                     event::Status::Captured => None,
                     event::Status::Ignored => Some(Message::KeyPressed(modifiers, key)),
@@ -337,8 +337,9 @@ impl App {
         Subscription::batch(subscriptions)
     }
 
-    fn theme(&self) -> Theme {
-        Theme::CatppuccinFrappe
+    // use mytheme as Theme
+    fn theme(&self) -> theme::MyTheme {
+        theme::MyTheme::default()
     }
 
     fn open_project(&mut self, path: PathBuf) {
