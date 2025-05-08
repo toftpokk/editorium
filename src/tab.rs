@@ -243,6 +243,7 @@ impl Tab {
             )
         }
 
+        // TODO: halloy's combo_box
         col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
     }
 
