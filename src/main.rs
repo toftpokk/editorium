@@ -284,7 +284,6 @@ impl App {
             })
             .placeholder("Choose a Project"),
             button("Open File").on_press(Message::OpenFileSelector),
-            // .style(|theme, status| theme::primary(theme, status)),
             button("Open Dir").on_press(Message::OpenDirectorySelector) //     // current_project
                                                                         //     // current git branch
                                                                         //     // run
@@ -305,10 +304,6 @@ impl App {
                             horizontal: scrollable::Scrollbar::default().scroller_width(0).width(0),
                         }),
                 )
-                // .style(|_| container::Style {
-                //     background: Some(iced::Background::Color(Color::from_rgb8(0x2B, 0x2D, 0x30))),
-                //     ..Default::default()
-                // })
             }
         })
         .width(Length::Fill)
