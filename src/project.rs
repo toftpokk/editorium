@@ -5,7 +5,7 @@ use iced::{
     widget::{Column, Row, button, text},
 };
 
-use crate::{ICON_FONT_SOLID, Message, theme};
+use crate::{Message, font, theme};
 
 #[derive()]
 pub enum Error {
@@ -103,52 +103,38 @@ impl ProjectTree {
     }
 
     pub fn view(&self) -> Column<Message, theme::MyTheme> {
-        let nodes: Vec<Element<Message, theme::MyTheme>> = self
-            .order
-            .iter()
-            .map(|id| {
-                let node = self.items.get(id).unwrap();
-                match &node.kind {
-                    NodeKind::File => button(text(&node.name))
-                        .on_press(Message::OpenFile(node.path.to_owned()))
-                        .padding(Padding {
-                            top: 5.0,
-                            right: 5.0,
-                            bottom: 5.0,
-                            left: (node.indent as f32 + 1.0) * 15.0,
-                        })
-                        .into(),
-                    NodeKind::Directory { open: true, .. } => button(
-                        Row::new()
-                            .push(text('\u{f107}').font(ICON_FONT_SOLID).width(15.0))
-                            .push(text(&node.name))
-                            .spacing(4.0),
-                    )
-                    .on_press(Message::ProjectTreeSelect(node.id))
-                    .padding(Padding {
+        let nodes: Vec<Element<Message, theme::MyTheme>> =
+            self.order
+                .iter()
+                .map(|id| {
+                    let node = self.items.get(id).unwrap();
+                    let elem = match &node.kind {
+                        NodeKind::File => button(text(&node.name))
+                            .on_press(Message::OpenFile(node.path.to_owned())),
+                        NodeKind::Directory { open, .. } => {
+                            let icon = if *open {
+                                font::caret_down()
+                            } else {
+                                font::caret_right()
+                            };
+                            button(
+                                Row::new()
+                                    .push(text(icon).font(font::ICON_SOLID).width(15.0))
+                                    .push(text(&node.name))
+                                    .spacing(4.0),
+                            )
+                            .on_press(Message::ProjectTreeSelect(node.id))
+                        }
+                    };
+                    elem.padding(Padding {
                         top: 5.0,
                         right: 5.0,
                         bottom: 5.0,
                         left: (node.indent as f32 + 1.0) * 15.0,
                     })
-                    .into(),
-                    NodeKind::Directory { open: false, .. } => button(
-                        Row::new()
-                            .push(text('\u{f105}').font(ICON_FONT_SOLID).width(15.0))
-                            .push(text(&node.name))
-                            .spacing(4.0),
-                    )
-                    .on_press(Message::ProjectTreeSelect(node.id))
-                    .padding(Padding {
-                        top: 5.0,
-                        right: 5.0,
-                        bottom: 5.0,
-                        left: (node.indent as f32 + 1.0) * 15.0,
-                    })
-                    .into(),
-                }
-            })
-            .collect();
+                    .into()
+                })
+                .collect();
         Column::from_vec(nodes)
     }
 }

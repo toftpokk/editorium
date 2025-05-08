@@ -8,7 +8,7 @@ use std::{
 
 use clap::Parser;
 use iced::{
-    Element, Font, Length, Subscription, Task,
+    Element, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
     event, time,
     widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable, stack},
@@ -18,6 +18,7 @@ use key_binds::KeyBind;
 use rfd::FileDialog;
 
 mod cli;
+mod font;
 mod key_binds;
 mod project;
 mod tab;
@@ -29,20 +30,6 @@ static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
 static SYNTAX_SYSTEM: OnceLock<cosmic_text::SyntaxSystem> = OnceLock::new();
 static SWASH_CACHE: OnceLock<RwLock<cosmic_text::SwashCache>> = OnceLock::new();
 static KEY_BINDINGS: OnceLock<HashMap<KeyBind, Message>> = OnceLock::new();
-// TODO move
-// Ref: https://github.com/danielmbomfim/iced_font_awesome/
-const ICON_BYTES_REGULAR: &[u8] = include_bytes!("../fonts/font-awesome.otf");
-const ICON_FONT_REGULAR: Font = Font {
-    family: iced::font::Family::Name("Font Awesome 6 Free"),
-    ..iced::Font::DEFAULT
-};
-
-const ICON_BYTES_SOLID: &[u8] = include_bytes!("../fonts/font-awesome-solid.otf");
-const ICON_FONT_SOLID: Font = Font {
-    family: iced::font::Family::Name("Font Awesome 6 Free"),
-    weight: iced::font::Weight::Black,
-    ..iced::Font::DEFAULT
-};
 
 fn font_system() -> &'static RwLock<cosmic_text::FontSystem> {
     FONT_SYSTEM.get().unwrap()
@@ -83,9 +70,10 @@ fn main() -> Result<(), iced::Error> {
     iced::application("Editorium", App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
-        .font(iced_fonts::REQUIRED_FONT_BYTES)
-        .font(ICON_BYTES_REGULAR)
-        .font(ICON_BYTES_SOLID)
+        .settings(iced::Settings {
+            fonts: font::load(),
+            ..Default::default()
+        })
         .run_with(App::new)
 }
 
@@ -293,16 +281,16 @@ impl App {
             )
             .handle(pick_list::Handle::Dynamic {
                 closed: pick_list::Icon {
-                    font: ICON_FONT_SOLID,
-                    code_point: '\u{f0da}',
+                    font: font::ICON_SOLID,
+                    code_point: font::arrow_left(),
                     size: None,
                     line_height: iced::widget::text::LineHeight::default(),
                     shaping: iced::widget::text::Shaping::Basic,
                 },
                 open: pick_list::Icon {
-                    font: ICON_FONT_SOLID,
+                    font: font::ICON_SOLID,
                     // todo: list of codepoints used
-                    code_point: '\u{f0d7}',
+                    code_point: font::arrow_dowwn(),
                     size: None,
                     line_height: iced::widget::text::LineHeight::default(),
                     shaping: iced::widget::text::Shaping::Basic,
