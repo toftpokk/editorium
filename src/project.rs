@@ -120,7 +120,7 @@ impl ProjectTree {
                         .into(),
                     NodeKind::Directory { open: true, .. } => button(
                         Row::new()
-                            .push(text('\u{f105}').font(ICON_FONT_SOLID).width(15.0))
+                            .push(text('\u{f107}').font(ICON_FONT_SOLID).width(15.0))
                             .push(text(&node.name))
                             .spacing(4.0),
                     )
@@ -134,7 +134,7 @@ impl ProjectTree {
                     .into(),
                     NodeKind::Directory { open: false, .. } => button(
                         Row::new()
-                            .push(text('\u{f107}').font(ICON_FONT_SOLID).width(15.0))
+                            .push(text('\u{f105}').font(ICON_FONT_SOLID).width(15.0))
                             .push(text(&node.name))
                             .spacing(4.0),
                     )

@@ -269,7 +269,7 @@ impl App {
             .handle(pick_list::Handle::Dynamic {
                 closed: pick_list::Icon {
                     font: ICON_FONT_SOLID,
-                    code_point: '\u{f0d7}',
+                    code_point: '\u{f0da}',
                     size: None,
                     line_height: iced::widget::text::LineHeight::default(),
                     shaping: iced::widget::text::Shaping::Basic,
@@ -277,7 +277,7 @@ impl App {
                 open: pick_list::Icon {
                     font: ICON_FONT_SOLID,
                     // todo: list of codepoints used
-                    code_point: '\u{f0da}',
+                    code_point: '\u{f0d7}',
                     size: None,
                     line_height: iced::widget::text::LineHeight::default(),
                     shaping: iced::widget::text::Shaping::Basic,
