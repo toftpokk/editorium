@@ -463,19 +463,25 @@ where
                             self.start_new_change(&mut editor, state);
                             editor.action(cosmic_text::Action::Enter)
                         }
+                        Binding::Unindent => {
+                            self.start_new_change(&mut editor, state);
+                            editor.action(cosmic_text::Action::Unindent)
+                        }
                         Binding::Tab => {
                             self.start_new_change(&mut editor, state);
-                            editor.insert_string("  ", None);
+                            editor.insert_string("    ", None);
                             // TODO
                             // if after first non-space character of line, use <tab>
                             // else, tab until equal tab width
                         }
                         Binding::Backspace => {
-                            self.start_new_change(&mut editor, state);
+                            // todo: start new change if previous is not a delete action
+                            editor.start_change();
                             editor.action(cosmic_text::Action::Backspace);
                         }
                         Binding::Delete => {
-                            self.start_new_change(&mut editor, state);
+                            // todo: start new change if previous is not a delete action
+                            editor.start_change();
                             editor.action(cosmic_text::Action::Delete)
                         }
                         Binding::BackspaceWord => {
@@ -648,6 +654,7 @@ where
             }
             iced::Event::Mouse(event) => match event {
                 iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
+                    self.start_new_change(&mut editor, state);
                     if let Some(pos) = cursor.position_in(layout.bounds()) {
                         let mut x = pos.x - self.padding.left - gutter_width as f32;
                         let y = pos.y - self.padding.top;
@@ -858,6 +865,7 @@ where
 pub enum Binding {
     Enter,
     Tab,
+    Unindent,
     Backspace,
     BackspaceWord,
     Delete,
@@ -926,6 +934,9 @@ impl Binding {
         match event {
             keyboard::Event::KeyPressed { key, modifiers, .. } => match key.as_ref() {
                 keyboard::Key::Named(keyboard::key::Named::Enter) => Some(Self::Enter),
+                keyboard::Key::Named(keyboard::key::Named::Tab) if modifiers.shift() => {
+                    Some(Self::Unindent)
+                }
                 keyboard::Key::Named(keyboard::key::Named::Tab) => Some(Self::Tab),
                 keyboard::Key::Named(keyboard::key::Named::Backspace) => {
                     if modifiers.command() {
