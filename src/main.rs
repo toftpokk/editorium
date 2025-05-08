@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     fs,
     path::PathBuf,
@@ -410,7 +411,15 @@ impl App {
                 }
             }
         }
-        nodes.sort();
+        nodes.sort_by(|a, b| {
+            if a.is_dir() && !b.is_dir() {
+                return Ordering::Less;
+            }
+            if b.is_dir() && !a.is_dir() {
+                return Ordering::Greater;
+            }
+            a.cmp(b)
+        });
 
         let mut position = pos + 1;
         for node in nodes {
