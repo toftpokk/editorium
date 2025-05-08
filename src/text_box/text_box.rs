@@ -1,7 +1,10 @@
 use cosmic_text::{Attrs, AttrsList, BufferLine, Edit, LineEnding, Metrics, Motion, SyntaxEditor};
 use iced::{
     Element, Length, Padding, Rectangle, Size,
-    advanced::{Layout, Widget, image, layout, widget},
+    advanced::{
+        Layout, Widget, image, layout,
+        widget::{self, operation},
+    },
     event::Status,
     keyboard, mouse,
 };
@@ -47,6 +50,7 @@ struct State {
     max_line_width: Cell<f32>,
     render_handle: RefCell<Option<image::Handle>>,
     parial_scroll: f32,
+    focused: bool,
 
     modifiers_shift: bool, // solely for shift scroll
 }
@@ -63,7 +67,22 @@ impl State {
             modifiers_shift: false,
             max_line_width: Cell::new(0.0),
             parial_scroll: 0.0,
+            focused: false,
         }
+    }
+}
+
+impl operation::Focusable for State {
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn focus(&mut self) {
+        self.focused = true
+    }
+
+    fn unfocus(&mut self) {
+        self.focused = false
     }
 }
 
@@ -463,7 +482,9 @@ where
                 state.modifiers_shift = modifiers.shift()
             }
             iced::Event::Keyboard(event) => {
-                if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
+                if !state.focused {
+                    // skip
+                } else if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
                     match binding {
                         Binding::Enter => {
                             self.start_new_change(&mut editor, state);
@@ -709,8 +730,12 @@ where
                             state.click_last = Some((kind, Instant::now(), (x, y)));
                             state.dragging = true;
                         }
+                        state.focused = true;
+                        status = Status::Captured;
+                    } else {
+                        // click somewhere else
+                        state.focused = false;
                     }
-                    status = Status::Captured;
                 }
                 iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) => {
                     state.dragging = false;
