@@ -22,6 +22,7 @@ pub struct TabWidget<'a> {
     // time between clicks for ClickKind.
     click_timing: time::Duration,
     auto_scroll: Option<(f32, (i32, i32))>,
+    line_number: bool,
 
     width: Length,
     height: Length,
@@ -37,6 +38,7 @@ pub fn tab_widget<'a>(
         metrics,
         click_timing: time::Duration::from_millis(500),
         auto_scroll: None,
+        line_number: true,
         // TODO support tabs, currently allows only space-indentation
         width: Length::Fill,
         height: Length::Fill,
@@ -179,62 +181,67 @@ where
         // let image_h: u32 = 500;
 
         // gutter shifting
-        let mut line_count = editor.with_buffer(|buffer| buffer.lines.len());
-        let mut line_number_chars = 1;
-        while line_count >= 10 {
-            line_count /= 10;
-            line_number_chars += 1;
-        }
-
-        let gutter_width = {
-            let text = format!("{:>line_number_chars$}", 1);
-
-            let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
-            let mut buffer_line = BufferLine::new(
-                text,
-                LineEnding::default(),
-                AttrsList::new(&attrs),
-                cosmic_text::Shaping::Advanced,
-            );
-            let layout = buffer_line.layout(
-                &mut font_system,
-                1.0,
-                None,
-                cosmic_text::Wrap::None,
-                None,
-                8,
-            );
-
-            let layout_line = &layout[0];
-
-            let line_number_width = layout_line.w * self.metrics.font_size;
-            let padding_x = 40.0;
-            (line_number_width + padding_x).ceil() as i32
-        };
-        state.gutter_width.replace(gutter_width);
-
-        // get max line width
-        let max_line_width = editor.with_buffer(|buffer| {
-            let mut max_line_width = 0.0;
-            for run in buffer.layout_runs() {
-                if run.line_w > max_line_width {
-                    max_line_width = run.line_w;
-                }
+        let mut gutter_width: i32 = 0;
+        let mut line_number_chars: usize = 0;
+        if self.line_number {
+            let mut line_count = editor.with_buffer(|buffer| buffer.lines.len());
+            line_number_chars = 1;
+            while line_count >= 10 {
+                line_count /= 10;
+                line_number_chars += 1;
             }
 
-            max_line_width
-        });
-        state.max_line_width.replace(max_line_width);
+            gutter_width = {
+                let text = format!("{:>line_number_chars$}", 1);
 
-        // set metrics to buffer & set size of buffer (for mouse) & optimize shape_as_needed
-        editor.with_buffer_mut(|buffer| {
-            buffer.set_metrics_and_size(
-                &mut font_system,
-                self.metrics,
-                Some((image_w - gutter_width) as f32),
-                Some(image_h as f32),
-            );
-        });
+                let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
+                let mut buffer_line = BufferLine::new(
+                    text,
+                    LineEnding::default(),
+                    AttrsList::new(&attrs),
+                    cosmic_text::Shaping::Advanced,
+                );
+                let layout = buffer_line.layout(
+                    &mut font_system,
+                    1.0,
+                    None,
+                    cosmic_text::Wrap::None,
+                    None,
+                    8,
+                );
+
+                let layout_line = &layout[0];
+
+                let line_number_width = layout_line.w * self.metrics.font_size;
+                let padding_x = 40.0;
+                (line_number_width + padding_x).ceil() as i32
+            };
+
+            // get max line width
+            let max_line_width = editor.with_buffer(|buffer| {
+                let mut max_line_width = 0.0;
+                for run in buffer.layout_runs() {
+                    if run.line_w > max_line_width {
+                        max_line_width = run.line_w;
+                    }
+                }
+
+                max_line_width
+            });
+            state.max_line_width.replace(max_line_width);
+
+            // set metrics to buffer & set size of buffer (for mouse) & optimize shape_as_needed
+            editor.with_buffer_mut(|buffer| {
+                buffer.set_metrics_and_size(
+                    &mut font_system,
+                    self.metrics,
+                    Some((image_w - gutter_width) as f32),
+                    Some(image_h as f32),
+                );
+            });
+        }
+
+        state.gutter_width.replace(gutter_width);
 
         // shaping takes 80% of the total drawing time, maybe behind redraw flag?
         // disabling syntax highlighting (using Editor instead) does *not* improve speed
@@ -250,102 +257,105 @@ where
                 )
             };
 
-            let (gutter, gutter_foreground) = {
-                let convert_color = |color: syntect::highlighting::Color| {
-                    cosmic_text::Color::rgba(color.r, color.g, color.b, color.a)
+            if self.line_number {
+                let (gutter, gutter_foreground) = {
+                    let convert_color = |color: syntect::highlighting::Color| {
+                        cosmic_text::Color::rgba(color.r, color.g, color.b, color.a)
+                    };
+                    let syntax_theme = editor.theme();
+                    let gutter = syntax_theme
+                        .settings
+                        .gutter
+                        .map_or(editor.background_color(), convert_color);
+                    let gutter_foreground = syntax_theme
+                        .settings
+                        .gutter_foreground
+                        .map_or(editor.foreground_color(), convert_color);
+                    (gutter, gutter_foreground)
                 };
-                let syntax_theme = editor.theme();
-                let gutter = syntax_theme
-                    .settings
-                    .gutter
-                    .map_or(editor.background_color(), convert_color);
-                let gutter_foreground = syntax_theme
-                    .settings
-                    .gutter_foreground
-                    .map_or(editor.foreground_color(), convert_color);
-                (gutter, gutter_foreground)
-            };
 
-            draw_rect(
-                pixels,
-                Canvas {
-                    w: image_w,
-                    h: image_h,
-                },
-                Canvas {
-                    w: gutter_width,
-                    h: image_h,
-                },
-                Offset { x: 0, y: 0 },
-                gutter,
-            );
+                draw_rect(
+                    pixels,
+                    Canvas {
+                        w: image_w,
+                        h: image_h,
+                    },
+                    Canvas {
+                        w: gutter_width,
+                        h: image_h,
+                    },
+                    Offset { x: 0, y: 0 },
+                    gutter,
+                );
 
-            // line number drawing is significant, maybe cache it?
-            // draw line numbers
-            /*editor.with_buffer(|buffer| {
-                let mut last_line_number = 0;
-                for run in buffer.layout_runs() {
-                    let line_number = run.line_i.saturating_add(1);
-                    if line_number == last_line_number {
-                        continue;
-                    }
-                    last_line_number = line_number;
+                // line number drawing is significant, maybe cache it?
+                // draw line numbers
+                editor.with_buffer(|buffer| {
+                    let mut last_line_number = 0;
+                    for run in buffer.layout_runs() {
+                        let line_number = run.line_i.saturating_add(1);
+                        if line_number == last_line_number {
+                            continue;
+                        }
+                        last_line_number = line_number;
 
-                    let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
-                    let text = format!("{:>line_number_chars$}", line_number);
-                    let mut buffer_line = BufferLine::new(
-                        text,
-                        LineEnding::default(),
-                        AttrsList::new(&attrs),
-                        cosmic_text::Shaping::Advanced,
-                    );
-                    let layout = buffer_line.layout(
-                        &mut font_system,
-                        1.0,
-                        None,
-                        cosmic_text::Wrap::None,
-                        None,
-                        8,
-                    );
-
-                    let layout_line = &layout[0];
-
-                    // scaling layout_line to fit metrics font size
-                    let max_ascent = layout_line.max_ascent * self.metrics.font_size;
-                    let max_descent = layout_line.max_descent * self.metrics.font_size;
-
-                    // getting line y offset compared to glyph
-                    let glyph_height = max_ascent + max_descent;
-                    let centering_offset = (self.metrics.line_height - glyph_height) / 2.0;
-                    let line_y = run.line_top + centering_offset + max_ascent;
-
-                    for glyph in layout_line.glyphs.to_vec() {
-                        let physical_glyph = glyph.physical((0.0, line_y), self.metrics.font_size);
-
-                        let padding_x_start = 20;
-                        swash_cache.with_pixels(
-                            &mut font_system,
-                            physical_glyph.cache_key,
-                            gutter_foreground,
-                            |x, y, color| {
-                                draw_rect(
-                                    pixels,
-                                    Canvas {
-                                        w: image_w as i32,
-                                        h: image_h as i32,
-                                    },
-                                    Canvas { h: 1, w: 1 },
-                                    Offset {
-                                        x: physical_glyph.x + x + padding_x_start,
-                                        y: physical_glyph.y + y,
-                                    },
-                                    color,
-                                );
-                            },
+                        let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
+                        let text = format!("{:>line_number_chars$}", line_number);
+                        let mut buffer_line = BufferLine::new(
+                            text,
+                            LineEnding::default(),
+                            AttrsList::new(&attrs),
+                            cosmic_text::Shaping::Advanced,
                         );
+                        let layout = buffer_line.layout(
+                            &mut font_system,
+                            1.0,
+                            None,
+                            cosmic_text::Wrap::None,
+                            None,
+                            8,
+                        );
+
+                        let layout_line = &layout[0];
+
+                        // scaling layout_line to fit metrics font size
+                        let max_ascent = layout_line.max_ascent * self.metrics.font_size;
+                        let max_descent = layout_line.max_descent * self.metrics.font_size;
+
+                        // getting line y offset compared to glyph
+                        let glyph_height = max_ascent + max_descent;
+                        let centering_offset = (self.metrics.line_height - glyph_height) / 2.0;
+                        let line_y = run.line_top + centering_offset + max_ascent;
+
+                        for glyph in layout_line.glyphs.to_vec() {
+                            let physical_glyph =
+                                glyph.physical((0.0, line_y), self.metrics.font_size);
+
+                            let padding_x_start = 20;
+                            swash_cache.with_pixels(
+                                &mut font_system,
+                                physical_glyph.cache_key,
+                                gutter_foreground,
+                                |x, y, color| {
+                                    draw_rect(
+                                        pixels,
+                                        Canvas {
+                                            w: image_w as i32,
+                                            h: image_h as i32,
+                                        },
+                                        Canvas { h: 1, w: 1 },
+                                        Offset {
+                                            x: physical_glyph.x + x + padding_x_start,
+                                            y: physical_glyph.y + y,
+                                        },
+                                        color,
+                                    );
+                                },
+                            );
+                        }
                     }
-                }
-            });*/
+                });
+            }
 
             // FIXME: cosmic text highlight lines until end of buffer, not end of line
             let scroll_x = editor.with_buffer(|buffer| buffer.scroll().horizontal as i32);
