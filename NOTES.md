@@ -18,5 +18,3 @@
 - Event Ignored -> app.subscription -> Message
 
 - Timed app.subscription -> Message
-
-## Iced
