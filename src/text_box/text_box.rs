@@ -98,7 +98,6 @@ where
     ) -> layout::Node {
         let limits = limits.width(self.width).height(self.height);
 
-        let font_system = font_system().write().expect("font system not writable");
         let editor = self.editor.write().expect("editor not writable");
 
         // width = self.limits
@@ -575,9 +574,6 @@ where
                                 }
                             }
                         }
-                        Binding::Unfocus => {
-                            editor.set_selection(cosmic_text::Selection::None);
-                        }
                         Binding::SelectAll => {
                             let has_content = editor.with_buffer(|buffer| {
                                 // buffer has content
@@ -926,7 +922,6 @@ pub enum Binding {
     BackspaceWord,
     Delete,
     DeleteWord,
-    Unfocus,
     Copy,
     Cut,
     Paste,

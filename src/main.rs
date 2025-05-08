@@ -12,9 +12,8 @@ use iced::{
     Element, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
     event, time,
-    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable, stack},
+    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
-use iced_aw::iced_fonts;
 use key_binds::KeyBind;
 use rfd::FileDialog;
 

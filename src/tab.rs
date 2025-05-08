@@ -78,10 +78,6 @@ impl TabView {
         self.active
     }
 
-    pub fn tab(&self, index: usize) -> Option<&Tab> {
-        self.tabs.get(index)
-    }
-
     pub fn tab_mut(&mut self, index: usize) -> Option<&mut Tab> {
         self.tabs.get_mut(index)
     }

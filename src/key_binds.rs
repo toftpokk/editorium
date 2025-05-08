@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use iced::keyboard::{Key, Modifiers, key};
+use iced::keyboard::{Key, Modifiers};
 
 use crate::Message;
 
