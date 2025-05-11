@@ -20,6 +20,7 @@ use rfd::FileDialog;
 mod cli;
 mod font;
 mod key_binds;
+mod lsp;
 mod project;
 mod tab;
 mod text_box;
@@ -101,6 +102,7 @@ struct App {
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
+    lsp_client: Option<lsp::client::Client>,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -127,13 +129,21 @@ impl App {
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
+            lsp_client: None,
         };
 
         if let Some(path) = cli.path {
             if path.is_dir() {
                 app.open_project(path);
             } else {
-                app.open_file(path);
+                // TODO
+                let mut lsp_client = lsp::client::Client::new(&path);
+                match lsp_client.init() {
+                    Ok(_) => {}
+                    Err(err) => panic!("{:?}", err),
+                }
+                app.lsp_client = Some(lsp_client);
+                // app.open_file(path);
             }
         }
 
