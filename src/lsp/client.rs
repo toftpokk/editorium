@@ -99,7 +99,7 @@ impl Connection {
 
         let content = String::from_utf8(buf).unwrap();
 
-        let content_response = jsonrpc::response(&content);
+        let content_response = jsonrpc::Response::from(content);
         match content_response.error {
             Some(err) => panic!("Could not read response: {}", err),
             None => {}
@@ -182,6 +182,7 @@ impl Client {
 
         let (result, id) = block_on(connection.recv()).unwrap();
         // TODO out of order messages
+        // TODO event polling
         if id != req_id {
             panic!("message out of order")
         }
