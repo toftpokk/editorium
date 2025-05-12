@@ -1142,6 +1142,7 @@ dependencies = [
  "log",
  "lsp-types",
  "rfd",
+ "serde",
  "serde_json",
  "smol",
  "syntect",
