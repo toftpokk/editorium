@@ -10,8 +10,10 @@ use std::{
 use clap::Parser;
 use iced::{
     Element, Length, Subscription, Task,
-    advanced::graphics::core::keyboard,
-    event, time,
+    advanced::{graphics::core::keyboard, subscription},
+    event,
+    futures::SinkExt,
+    stream, time,
     widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
 use key_binds::KeyBind;
@@ -338,6 +340,8 @@ impl App {
     }
 
     // note: events seem to call on everybody's on_event, with subscription last
+    // explanation: this function is run when necessary i.e. "show me (iced) which subscriptions are still ongoing"
+    // NOT "show me all events then I will check subscriptions"
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
@@ -348,11 +352,15 @@ impl App {
             }
             _ => None,
         })];
+        if let Some(lsp) = self.lsp_client {
+            Subscription::run(lspworker);
+        }
 
         if let Some(_) = self.auto_scroll {
             subscriptions
                 .push(time::every(time::Duration::from_millis(10)).map(|_| Message::AutoScroll));
         }
+        println!("hello sub");
 
         Subscription::batch(subscriptions)
     }
@@ -458,4 +466,21 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
         return Some(file);
     }
     return None;
+}
+
+fn lspworker() -> impl iced::futures::Stream<Item = Message> {
+    // Subscription::run(stream::channel(100, |mut output| async move {
+    //     // output.poll_ready(cx)
+    //     // match output.poll_ready(cx) {
+    //     //     std::task::Poll::Ready(_) => todo!(),
+    //     //     std::task::Poll::Pending => todo!(),
+    //     // }
+    //     // return ();
+    //     loop {
+    //         output.send(Message::AutoScroll).await;
+    //     }
+    // }));
+    //     let k : Subscription<Message> =time::every(duration)
+    //     // subscriptions.push(||);
+    //     // subscriptions.push(value);
 }
