@@ -6,60 +6,89 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Serialize, Deserialize)]
-pub struct RawRequest {
-    pub jsonrpc: String,
-    pub method: String,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Message {
+    jsonrpc: String,
+    pub id: Option<Value>,
 
+    // request
+    pub method: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub params: Option<Value>,
 
-    pub id: Option<Value>,
+    // response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<Value>,
+    pub error: Option<Value>,
 }
 
-impl From<String> for RawRequest {
+impl From<String> for Message {
     fn from(value: String) -> Self {
         serde_json::from_str(&value).unwrap()
     }
 }
 
-impl RawRequest {
-    fn as_request(self) -> Request {
+impl Message {
+    pub fn is_request_object(&self) -> bool {
+        self.method.is_some()
+    }
+
+    pub fn is_request(&self) -> bool {
+        self.method.is_some() && self.id.is_some()
+    }
+
+    pub fn is_notification(&self) -> bool {
+        self.method.is_some() && self.id.is_none()
+    }
+
+    pub fn is_response(&self) -> bool {
+        self.result.is_some()
+    }
+
+    pub fn as_request(self) -> Request {
         Request {
             jsonrpc: self.jsonrpc,
-            method: self.method,
+            method: self.method.unwrap(),
             params: self.params,
             id: self.id.unwrap(),
         }
     }
 
-    fn as_notification(self) -> Notification {
+    pub fn as_notification(self) -> Notification {
         Notification {
             jsonrpc: self.jsonrpc,
-            method: self.method,
+            method: self.method.unwrap(),
             params: self.params,
+        }
+    }
+
+    pub fn as_response(self) -> Response {
+        Response {
+            result: self.result,
+            error: self.error,
+            id: self.id.unwrap(),
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Request {
     jsonrpc: String,
-    method: String,
+    pub method: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    params: Option<Value>,
+    pub params: Option<Value>,
 
-    id: Value,
+    pub id: Value,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Notification {
     jsonrpc: String,
-    method: String,
+    pub method: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    params: Option<Value>,
+    pub params: Option<Value>,
 }
 
 pub fn request(id: u32, method: &str, params: Option<Value>) -> String {
@@ -73,7 +102,7 @@ pub fn request(id: u32, method: &str, params: Option<Value>) -> String {
     serde_json::to_string(&request).unwrap()
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 
 pub struct Response {
     pub result: Option<Value>,

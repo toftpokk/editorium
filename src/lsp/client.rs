@@ -21,6 +21,11 @@ impl From<std::io::Error> for Error {
     }
 }
 
+pub enum Message {
+    InitializeResult,
+    UnknownRequest(String),
+}
+
 // connection to spawned lsp server
 pub struct Connection {
     _process: Child, // store, so kill_on_drop does not drop
@@ -61,7 +66,8 @@ impl Connection {
         request_id
     }
 
-    async fn recv(&mut self) -> Result<(serde_json::Value, serde_json::Value), Error> {
+    // recieve jsonrpc payload
+    async fn recv(&mut self) -> Result<jsonrpc::Message, Error> {
         let mut content_length = 0;
         let mut content_type = "application/vscode-jsonrpc; charset=utf-8".to_string();
         loop {
@@ -97,17 +103,31 @@ impl Connection {
             panic!("Unknown content type: {}", content_type);
         }
 
-        let content = String::from_utf8(buf).unwrap();
+        let payload = String::from_utf8(buf).unwrap();
 
-        let content_response = jsonrpc::Response::from(content);
-        match content_response.error {
-            Some(err) => panic!("Could not read response: {}", err),
-            None => {}
+        Ok(jsonrpc::Message::from(payload))
+    }
+
+    // poll a message
+    async fn poll_message(&mut self) -> Result<Message, Error> {
+        let message = self.recv().await?;
+
+        if message.is_response() {
+            // Note: when requesting something, client should block & wait for response
+            // TODO: poller should be able to push responses to caller
+            panic!("response should not be polled: {:?}", message)
         }
 
-        let result = content_response.result.unwrap();
+        if message.is_notification() {
+            let notification = message.as_notification();
+            return Ok(Message::UnknownRequest(notification.method));
+        }
+        if message.is_request() {
+            let request = message.as_request();
+            return Ok(Message::UnknownRequest(request.method));
+        }
 
-        Ok((result, content_response.id))
+        panic!("unknown message: {:?}", message);
     }
 }
 
@@ -180,15 +200,20 @@ impl Client {
         let client_capabilities = serde_json::to_value(params).unwrap();
         let req_id = block_on(connection.send("initialize", Some(client_capabilities)));
 
-        let (result, id) = block_on(connection.recv()).unwrap();
-        // TODO out of order messages
-        // TODO event polling
-        if id != req_id {
-            panic!("message out of order")
+        let message = block_on(connection.recv()).unwrap();
+        if !message.is_response() {
+            panic!("message out of order: {:?}", message)
         }
-
+        let response = message.as_response();
+        // TODO handle out of order
+        if response.id != req_id {
+            panic!("out of order: {:?}", response)
+        }
+        if let Some(err) = response.error {
+            panic!("initialization error: {}", err)
+        }
         let initialize_result: lsp_types::InitializeResult =
-            serde_json::from_value(result).unwrap();
+            serde_json::from_value(response.result.unwrap()).unwrap();
 
         // initialize_result.server_info
         if let Some(server_info) = initialize_result.server_info {
