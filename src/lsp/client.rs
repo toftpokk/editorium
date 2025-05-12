@@ -1,10 +1,9 @@
 use core::num;
-use iced::{futures::AsyncBufReadExt, widget::shader::wgpu::naga::proc};
 use lsp_types;
 use serde_json::json;
 use smol::{
     block_on,
-    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
 };
 use std::{path::PathBuf, process::Stdio, str::FromStr, string::ParseError};
@@ -42,7 +41,9 @@ impl Client {
     }
 
     pub fn init(&mut self) -> Result<(), Error> {
-        let mut process = Command::new("wc")
+        // note cat reads stdin and echos to stdout
+        // good command for test
+        let mut process = Command::new("cat")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -57,12 +58,14 @@ impl Client {
         };
 
         // process read buffers
-        // let stdout = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
-        // let stdin = BufWriter::new(process.stdin.take().expect("Failed to open stdin"));
+        // let mut stdout = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
+        let mut stdin = BufWriter::new(process.stdin.take().expect("Failed to open stdin"));
         // let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
 
-        let buf = "hello";
-        block_on(process.stdin.unwrap().write(buf.as_bytes())).unwrap();
+        let buf = "hello\n";
+        let num_b = block_on(stdin.write(buf.as_bytes())).unwrap();
+        println!("{}", num_b);
+        block_on(stdin.flush()).unwrap();
 
         let mut buf = vec![0; 1024];
         block_on(process.stdout.unwrap().read(&mut buf)).unwrap();
