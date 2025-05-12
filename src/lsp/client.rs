@@ -339,7 +339,9 @@ impl Transport {
         T: smol::io::AsyncRead + Unpin, // need to be able to read async
     {
         let result = Self::recv(buf).await.unwrap();
-        chan_writer.send(result);
+        if let Some(result) = result {
+            chan_writer.send(result).await.unwrap();
+        }
     }
 
     async fn send<T>(
@@ -360,7 +362,9 @@ impl Transport {
     }
 
     // recieve jsonrpc payload
-    async fn recv<T>(reader: &mut BufReader<T>) -> Result<jsonrpc::Message, Error>
+    // note: AsyncRead polls, does not wait
+    // maybe optimize?
+    async fn recv<T>(reader: &mut BufReader<T>) -> Result<Option<jsonrpc::Message>, Error>
     where
         T: smol::io::AsyncRead + Unpin, // need to be able to read async
     {
@@ -369,6 +373,10 @@ impl Transport {
         loop {
             let mut header_line = String::new();
             reader.read_line(&mut header_line).await?;
+            // read_line will return empty string while polling
+            if header_line.len() < 1 {
+                return Ok(None);
+            }
 
             let header_line = header_line.as_str().trim();
             if header_line.len() == 0 {
@@ -401,7 +409,7 @@ impl Transport {
 
         let payload = String::from_utf8(buf).unwrap();
 
-        Ok(jsonrpc::Message::from(payload))
+        Ok(Some(jsonrpc::Message::from(payload)))
     }
 }
 

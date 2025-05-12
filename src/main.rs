@@ -363,7 +363,6 @@ impl App {
             subscriptions
                 .push(time::every(time::Duration::from_millis(10)).map(|_| Message::AutoScroll));
         }
-        println!("hello sub");
 
         Subscription::batch(subscriptions)
     }
@@ -475,7 +474,7 @@ fn lsp_worker(receiver: lsp::TransportReceiver) -> impl futures::Stream<Item = M
     stream::channel(100, |mut output| async move {
         loop {
             let msg = receiver.recv().await;
-            output.send(Message::LSPMessage(msg)).await;
+            output.send(Message::LSPMessage(msg)).await.unwrap();
         }
     })
 }
