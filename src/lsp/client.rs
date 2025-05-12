@@ -117,20 +117,11 @@ pub enum ClientKind {
     Initialized,
 }
 
-// impl ClientKind {
-//     fn into_connection(&mut self) -> Option<&mut Connection> {
-//         match self {
-//             Self::Initialized => Some(conn),
-//             Self::Uninitialized(conn) => Some(conn),
-//             _ => None,
-//         }
-//     }
-// }
-
 pub struct Client {
     kind: ClientKind,
     file: Option<PathBuf>,
     connection: Option<Connection>,
+    server_capabilities: Option<lsp_types::ServerCapabilities>,
 }
 
 impl Client {
@@ -139,6 +130,7 @@ impl Client {
             kind: ClientKind::None,
             file: None,
             connection: None,
+            server_capabilities: None,
         }
     }
 
@@ -185,8 +177,8 @@ impl Client {
 
         let params = Self::init_params(self.file.as_ref().unwrap(), "test".to_string()).unwrap();
 
-        let params = serde_json::to_value(params).unwrap();
-        let req_id = block_on(connection.send("initialize", Some(params)));
+        let client_capabilities = serde_json::to_value(params).unwrap();
+        let req_id = block_on(connection.send("initialize", Some(client_capabilities)));
 
         let (result, id) = block_on(connection.recv()).unwrap();
         // TODO out of order messages
@@ -194,9 +186,19 @@ impl Client {
             panic!("message out of order")
         }
 
-        self.kind = ClientKind::Initialized;
+        let initialize_result: lsp_types::InitializeResult =
+            serde_json::from_value(result).unwrap();
 
-        println!("{:?}", result);
+        // initialize_result.server_info
+        if let Some(server_info) = initialize_result.server_info {
+            // Note: server version is too detailed
+            log::info!("Connected to LSP server: {}", server_info.name)
+        } else {
+            log::info!("Connected to LSP server: unknown server name")
+        }
+
+        self.server_capabilities = Some(initialize_result.capabilities);
+        self.kind = ClientKind::Initialized;
     }
 
     pub fn init_params(
