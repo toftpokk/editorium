@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     jsonrpc: String,
     pub id: Option<Value>,
@@ -82,6 +82,17 @@ pub struct Request {
     pub id: Value,
 }
 
+impl Request {
+    pub fn new(id: u64, method: &str, params: Option<Value>) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            method: method.to_string(),
+            params,
+            id: serde_json::to_value(id).unwrap(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Notification {
     jsonrpc: String,
@@ -91,13 +102,8 @@ pub struct Notification {
     pub params: Option<Value>,
 }
 
-pub fn request(id: u32, method: &str, params: Option<Value>) -> String {
-    let request = Request {
-        jsonrpc: "2.0".to_string(),
-        method: method.to_string(),
-        params,
-        id: serde_json::to_value(id).unwrap(),
-    };
+pub fn request(id: u64, method: &str, params: Option<Value>) -> String {
+    let request = Request::new(id, method, params);
 
     serde_json::to_string(&request).unwrap()
 }

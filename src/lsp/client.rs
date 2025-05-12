@@ -1,11 +1,14 @@
-use lsp_types;
+use lsp_types::{self, request::Request};
 use serde_json::json;
 use smol::{
-    block_on,
+    Task, block_on,
+    channel::{self, Receiver},
+    future,
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
+    spawn,
 };
-use std::{path::PathBuf, process::Stdio, str::FromStr, string::ParseError};
+use std::{io::Stdout, path::PathBuf, process::Stdio, str::FromStr, string::ParseError};
 
 use super::jsonrpc;
 
@@ -27,109 +30,53 @@ pub enum Message {
 }
 
 // connection to spawned lsp server
-pub struct Connection {
-    _process: Child, // store, so kill_on_drop does not drop
-    stdout: BufReader<ChildStdout>,
-    stdin: BufWriter<ChildStdin>,
-    stderr: BufReader<ChildStderr>,
+// pub struct Connection {
+//     _process: Child, // store, so kill_on_drop does not drop
+//     stdout: BufReader<ChildStdout>,
+//     stdin: BufWriter<ChildStdin>,
+//     stderr: BufReader<ChildStderr>,
 
-    last_request_id: u32,
-}
+//     last_request_id: u32,
+// }
 
-impl Connection {
-    fn new(
-        process: Child,
-        stdout: BufReader<ChildStdout>,
-        stdin: BufWriter<ChildStdin>,
-        stderr: BufReader<ChildStderr>,
-    ) -> Self {
-        Self {
-            _process: process,
-            stdout,
-            stdin,
-            stderr,
-            last_request_id: 0,
-        }
-    }
+// impl Connection {
+//     fn new(
+//         process: Child,
+//         stdout: BufReader<ChildStdout>,
+//         stdin: BufWriter<ChildStdin>,
+//         stderr: BufReader<ChildStderr>,
+//     ) -> Self {
+//         Self {
+//             _process: process,
+//             stdout,
+//             stdin,
+//             stderr,
+//             last_request_id: 0,
+//         }
+//     }
 
-    async fn send(&mut self, method: &str, params: Option<serde_json::Value>) -> u32 {
-        self.last_request_id += 1;
-        let request_id = self.last_request_id;
-        let mut request = jsonrpc::request(request_id, method, params);
+//     // poll a message
+//     async fn poll_message(&mut self) -> Result<Message, Error> {
+//         let message = self.recv().await?;
 
-        let header = format!("Content-Length: {}\r\n\r\n", request.len());
+//         if message.is_response() {
+//             // Note: when requesting something, client should block & wait for response
+//             // TODO: poller should be able to push responses to caller
+//             panic!("response should not be polled: {:?}", message)
+//         }
 
-        request.insert_str(0, &header);
-        self.stdin.write_all(request.as_bytes()).await.unwrap();
-        self.stdin.flush().await.unwrap();
+//         if message.is_notification() {
+//             let notification = message.as_notification();
+//             return Ok(Message::UnknownRequest(notification.method));
+//         }
+//         if message.is_request() {
+//             let request = message.as_request();
+//             return Ok(Message::UnknownRequest(request.method));
+//         }
 
-        request_id
-    }
-
-    // recieve jsonrpc payload
-    async fn recv(&mut self) -> Result<jsonrpc::Message, Error> {
-        let mut content_length = 0;
-        let mut content_type = "application/vscode-jsonrpc; charset=utf-8".to_string();
-        loop {
-            let mut header_line = String::new();
-            self.stdout.read_line(&mut header_line).await?;
-
-            let header_line = header_line.as_str().trim();
-            if header_line.len() == 0 {
-                // end of headers
-                break;
-            }
-
-            let parts = header_line.split_once(":").unwrap();
-            let header = parts.0.trim();
-            let value = parts.1.trim();
-            match header {
-                "Content-Length" => {
-                    content_length = value.parse().unwrap();
-                }
-                "Content-Type" => {
-                    content_type = value.to_string();
-                }
-                header => {
-                    log::warn!("Unknown header: {}", header)
-                }
-            }
-        }
-
-        let mut buf = vec![0; content_length];
-        self.stdout.read_exact(&mut buf).await?;
-
-        if content_type != "application/vscode-jsonrpc; charset=utf-8" {
-            panic!("Unknown content type: {}", content_type);
-        }
-
-        let payload = String::from_utf8(buf).unwrap();
-
-        Ok(jsonrpc::Message::from(payload))
-    }
-
-    // poll a message
-    async fn poll_message(&mut self) -> Result<Message, Error> {
-        let message = self.recv().await?;
-
-        if message.is_response() {
-            // Note: when requesting something, client should block & wait for response
-            // TODO: poller should be able to push responses to caller
-            panic!("response should not be polled: {:?}", message)
-        }
-
-        if message.is_notification() {
-            let notification = message.as_notification();
-            return Ok(Message::UnknownRequest(notification.method));
-        }
-        if message.is_request() {
-            let request = message.as_request();
-            return Ok(Message::UnknownRequest(request.method));
-        }
-
-        panic!("unknown message: {:?}", message);
-    }
-}
+//         panic!("unknown message: {:?}", message);
+//     }
+// }
 
 pub enum ClientKind {
     None,
@@ -138,10 +85,10 @@ pub enum ClientKind {
 }
 
 pub struct Client {
-    kind: ClientKind,
-    file: Option<PathBuf>,
-    connection: Option<Connection>,
-    server_capabilities: Option<lsp_types::ServerCapabilities>,
+    pub kind: ClientKind,
+    pub file: Option<PathBuf>,
+    pub transport: Option<Transport>,
+    pub server_capabilities: Option<lsp_types::ServerCapabilities>,
 }
 
 impl Client {
@@ -149,7 +96,7 @@ impl Client {
         Self {
             kind: ClientKind::None,
             file: None,
-            connection: None,
+            transport: None,
             server_capabilities: None,
         }
     }
@@ -180,33 +127,56 @@ impl Client {
         let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
 
         self.kind = ClientKind::Uninitialized;
-        self.connection = Some(Connection::new(process, stdout, stdin, stderr));
+        self.transport = Some(Transport::new(stdin, stdout, stderr));
         self.file = Some(file);
 
         Ok(())
     }
 
-    pub fn initialize(&mut self) {
+    pub fn new_transport_receiver(&self) -> Option<TransportReceiver> {
+        match &self.kind {
+            ClientKind::Initialized => {}
+            _ => {
+                return None;
+            }
+        }
+        let receiver = self.transport.as_ref().unwrap().from_server.clone();
+        Some(receiver.into())
+    }
+
+    pub async fn initialize(&mut self) {
         match &self.kind {
             ClientKind::Uninitialized => {}
             _ => {
                 panic!("should be in state 'uninitialized'");
             }
         }
-        let connection = self.connection.as_mut().unwrap();
+        let transport = self.transport.as_mut().unwrap();
 
         let params = Self::init_params(self.file.as_ref().unwrap(), "test".to_string()).unwrap();
 
         let client_capabilities = serde_json::to_value(params).unwrap();
-        let req_id = block_on(connection.send("initialize", Some(client_capabilities)));
 
-        let message = block_on(connection.recv()).unwrap();
-        if !message.is_response() {
-            panic!("message out of order: {:?}", message)
+        // adds a new channel sender
+        let sender = transport.to_server.clone();
+        sender
+            .send(jsonrpc::Request::new(
+                0,
+                lsp_types::request::Initialize::METHOD,
+                Some(client_capabilities),
+            ))
+            .await
+            .unwrap();
+
+        let receiver = transport.from_server.clone();
+        let response = receiver.recv().await.unwrap();
+
+        if !response.is_response() {
+            panic!("message out of order: {:?}", response)
         }
-        let response = message.as_response();
+        let response = response.as_response();
         // TODO handle out of order
-        if response.id != req_id {
+        if response.id != 0 {
             panic!("out of order: {:?}", response)
         }
         if let Some(err) = response.error {
@@ -285,5 +255,167 @@ impl Client {
 
             ..Default::default()
         })
+    }
+}
+
+// a set of message channels for reading & writing to buffer
+// instead of directly r/w to buffer
+pub struct Transport {
+    from_server: channel::Receiver<jsonrpc::Message>,
+    from_server_worker: Task<()>,
+    to_server: channel::Sender<jsonrpc::Request>,
+    to_server_worker: Task<()>,
+}
+
+impl Transport {
+    fn new(
+        stdin: BufWriter<ChildStdin>,
+        stdout: BufReader<ChildStdout>,
+        stderr: BufReader<ChildStderr>,
+    ) -> Self {
+        // from lsp server
+        let (chan_writer, from_server) = channel::unbounded::<jsonrpc::Message>();
+        let from_server_worker = spawn(Self::from_server_worker(chan_writer, stdout, stderr));
+
+        // to lsp server
+        let (to_server, chan_reader) = channel::unbounded::<jsonrpc::Request>();
+        let to_server_worker = spawn(Self::to_server_worker(chan_reader, stdin));
+
+        // spawn(future)
+        Self {
+            from_server,
+            from_server_worker,
+            to_server,
+            to_server_worker,
+        }
+    }
+
+    // workers
+
+    async fn from_server_worker(
+        chan_writer: channel::Sender<jsonrpc::Message>,
+        stdout: BufReader<ChildStdout>,
+        stderr: BufReader<ChildStderr>,
+    ) {
+        // make it so stdxxx mutable
+        let mut stdout = stdout;
+        let mut stderr = stderr;
+        loop {
+            // receive message from both
+            smol::future::race(
+                Self::read_from_buf(&chan_writer, &mut stdout),
+                Self::read_from_buf(&chan_writer, &mut stderr),
+            )
+            .await;
+        }
+    }
+
+    async fn to_server_worker(
+        chan_reader: channel::Receiver<jsonrpc::Request>,
+        stdin: BufWriter<ChildStdin>,
+    ) {
+        let mut stdin = stdin; // make it so stdin mutable
+        loop {
+            // waits for message from channel
+            let msg = chan_reader.recv().await;
+            if let Ok(msg) = msg {
+                Self::send(
+                    msg.id.as_u64().unwrap(),
+                    &msg.method,
+                    msg.params,
+                    &mut stdin,
+                )
+                .await;
+            }
+        }
+    }
+
+    // helper
+
+    async fn read_from_buf<T>(
+        chan_writer: &channel::Sender<jsonrpc::Message>,
+        buf: &mut BufReader<T>,
+    ) where
+        T: smol::io::AsyncRead + Unpin, // need to be able to read async
+    {
+        let result = Self::recv(buf).await.unwrap();
+        chan_writer.send(result);
+    }
+
+    async fn send<T>(
+        request_id: u64,
+        method: &str,
+        params: Option<serde_json::Value>,
+        writer: &mut BufWriter<T>,
+    ) where
+        T: smol::io::AsyncWrite + Unpin, // need to be able to read async
+    {
+        let mut request = jsonrpc::request(request_id, method, params);
+
+        let header = format!("Content-Length: {}\r\n\r\n", request.len());
+
+        request.insert_str(0, &header);
+        writer.write_all(request.as_bytes()).await.unwrap();
+        writer.flush().await.unwrap();
+    }
+
+    // recieve jsonrpc payload
+    async fn recv<T>(reader: &mut BufReader<T>) -> Result<jsonrpc::Message, Error>
+    where
+        T: smol::io::AsyncRead + Unpin, // need to be able to read async
+    {
+        let mut content_length = 0;
+        let mut content_type = "application/vscode-jsonrpc; charset=utf-8".to_string();
+        loop {
+            let mut header_line = String::new();
+            reader.read_line(&mut header_line).await?;
+
+            let header_line = header_line.as_str().trim();
+            if header_line.len() == 0 {
+                // end of headers
+                break;
+            }
+
+            let parts = header_line.split_once(":").unwrap();
+            let header = parts.0.trim();
+            let value = parts.1.trim();
+            match header {
+                "Content-Length" => {
+                    content_length = value.parse().unwrap();
+                }
+                "Content-Type" => {
+                    content_type = value.to_string();
+                }
+                header => {
+                    log::warn!("Unknown header: {}", header)
+                }
+            }
+        }
+
+        let mut buf = vec![0; content_length];
+        reader.read_exact(&mut buf).await?;
+
+        if content_type != "application/vscode-jsonrpc; charset=utf-8" {
+            panic!("Unknown content type: {}", content_type);
+        }
+
+        let payload = String::from_utf8(buf).unwrap();
+
+        Ok(jsonrpc::Message::from(payload))
+    }
+}
+
+// receive server messages
+pub struct TransportReceiver(Receiver<jsonrpc::Message>);
+
+impl TransportReceiver {
+    pub async fn recv(&self) -> jsonrpc::Message {
+        self.0.recv().await.unwrap()
+    }
+}
+
+impl From<Receiver<jsonrpc::Message>> for TransportReceiver {
+    fn from(value: Receiver<jsonrpc::Message>) -> Self {
+        TransportReceiver(value)
     }
 }

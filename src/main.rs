@@ -12,7 +12,7 @@ use iced::{
     Element, Length, Subscription, Task,
     advanced::{graphics::core::keyboard, subscription},
     event,
-    futures::SinkExt,
+    futures::{self, SinkExt},
     stream, time,
     widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
@@ -60,6 +60,7 @@ enum Message {
     SaveFile,
     AutoScroll,
     SetAutoScroll(Option<f32>),
+    LSPMessage(lsp::Message),
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -352,8 +353,10 @@ impl App {
             }
             _ => None,
         })];
-        if let Some(lsp) = self.lsp_client {
-            Subscription::run(lspworker);
+
+        // subscription::run takes in a function that returns a stream of messages
+        if let Some(transport) = self.lsp_client.new_transport_receiver() {
+            subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
         }
 
         if let Some(_) = self.auto_scroll {
@@ -468,19 +471,11 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
     return None;
 }
 
-fn lspworker() -> impl iced::futures::Stream<Item = Message> {
-    // Subscription::run(stream::channel(100, |mut output| async move {
-    //     // output.poll_ready(cx)
-    //     // match output.poll_ready(cx) {
-    //     //     std::task::Poll::Ready(_) => todo!(),
-    //     //     std::task::Poll::Pending => todo!(),
-    //     // }
-    //     // return ();
-    //     loop {
-    //         output.send(Message::AutoScroll).await;
-    //     }
-    // }));
-    //     let k : Subscription<Message> =time::every(duration)
-    //     // subscriptions.push(||);
-    //     // subscriptions.push(value);
+fn lsp_worker(receiver: lsp::TransportReceiver) -> impl futures::Stream<Item = Message> {
+    stream::channel(100, |mut output| async move {
+        loop {
+            let msg = receiver.recv().await;
+            output.send(Message::LSPMessage(msg)).await;
+        }
+    })
 }
