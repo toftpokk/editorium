@@ -427,3 +427,5 @@ impl From<Receiver<jsonrpc::Message>> for TransportReceiver {
         TransportReceiver(value)
     }
 }
+
+// TODO use treesitter https://github.com/nvim-treesitter/nvim-treesitter?tab=readme-ov-file#supported-languages
