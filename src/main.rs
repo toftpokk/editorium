@@ -374,9 +374,9 @@ impl App {
         //     }
         // }
         // TODO maybe give ownership of Stdout reader to subscription?
-        if let Some(client) = &self.lsp_client.stdin {
-            subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
-        }
+        // if let Some(client) = &self.lsp_client.stdin {
+        //     subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
+        // }
 
         if let Some(_) = self.auto_scroll {
             subscriptions

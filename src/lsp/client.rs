@@ -4,7 +4,7 @@ use smol::{
     Task, block_on,
     channel::{self, Receiver},
     future,
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     spawn,
 };
@@ -92,11 +92,14 @@ pub struct Client {
     pub stdin: Option<BufWriter<ChildStdin>>,
     pub stdout: Option<BufReader<ChildStdout>>,
 
-    _write_worker: Option<channel::Receiver<String>>, // single instance
-    _writer: Option<channel::Sender<String>>,         // cloned
+    process: Option<Child>,
+    _write_worker: Option<Task<()>>,          // single instance
+    _writer: Option<channel::Sender<String>>, // cloned
 
-    _reader_worker: Option<channel::Sender<String>>, // single instance
-    _reader: Option<channel::Receiver<String>>,      // cloned
+    _reader_worker: Option<Task<()>>,           // single instance
+    _reader: Option<channel::Receiver<String>>, // cloned
+    _error_worker: Option<Task<()>>,            // single instance
+    _error: Option<channel::Receiver<String>>,  // cloned
 }
 
 // so that Task::perform can clone only Writer, not whole client
@@ -121,36 +124,39 @@ impl Client {
             transport: None,
             server_capabilities: None,
 
+            process: None,
             stdin: None,
             stdout: None,
             _write_worker: None,
             _writer: None,
             _reader_worker: None,
+            _error_worker: None,
             _reader: None,
+            _error: None,
         }
     }
 
-    pub async fn worker(&mut self) {
-        let obj = self._write_worker.as_ref().unwrap().recv().await.unwrap();
-        self.stdin
-            .as_mut()
-            .unwrap()
-            .write(obj.as_bytes())
-            .await
-            .unwrap();
-        // smol::future::race(
-        //     async {
-        //         let obj = self._write_worker.unwrap().recv().await.unwrap();
-        //         self.stdin.unwrap().write(obj.as_bytes());
-        //     },
-        //     async {
-        //         let m
-        //         self.stdout.unwrap().read();
-        //         self._reader_worker.unwrap().send(msg).await;
-        //     },
-        // )
-        // .await
-    }
+    // pub async fn worker(&mut self) {
+    //     let obj = self._write_worker.as_ref().unwrap().recv().await.unwrap();
+    //     self.stdin
+    //         .as_mut()
+    //         .unwrap()
+    //         .write(obj.as_bytes())
+    //         .await
+    //         .unwrap();
+    //     // smol::future::race(
+    //     //     async {
+    //     //         let obj = self._write_worker.unwrap().recv().await.unwrap();
+    //     //         self.stdin.unwrap().write(obj.as_bytes());
+    //     //     },
+    //     //     async {
+    //     //         let m
+    //     //         self.stdout.unwrap().read();
+    //     //         self._reader_worker.unwrap().send(msg).await;
+    //     //     },
+    //     // )
+    //     // .await
+    // }
 
     pub fn new_writer(&self) -> Writer {
         let w = self._writer.clone();
@@ -178,21 +184,31 @@ impl Client {
             }
         };
         // let stdout = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
-        self.stdin = Some(BufWriter::new(
-            process.stdin.take().expect("Failed to open stdin"),
-        ));
         let (send, recv) = channel::unbounded::<String>();
         self._writer = Some(send);
-        self._write_worker = Some(recv);
+        // self._write_worker = Some();
+        self._write_worker = Some(spawn(aaa(
+            recv,
+            BufWriter::new(process.stdin.take().expect("Failed to open stdin")),
+        )));
 
-        self.stdout = Some(BufReader::new(
-            process.stdout.take().expect("Failed to open stdout"),
-        ));
         let (send, recv) = channel::unbounded::<String>();
         self._reader = Some(recv);
-        self._reader_worker = Some(send);
+        // self._reader_worker = Some(spawn(bbb(
+        //     send,
+        //     BufReader::new(process.stdout.take().expect("Failed to open stdout")),
+        // )));
+
+        let (send, recv) = channel::unbounded::<String>();
+        self._error = Some(recv);
+        self._error_worker = Some(spawn(ccc(
+            send,
+            BufReader::new(process.stdout.take().expect("Failed to open stdout")),
+            BufReader::new(process.stderr.take().expect("Failed to open stderr")),
+        )));
         // let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
 
+        self.process = Some(process);
         self.kind = ClientKind::Uninitialized;
         // self.transport = Some(Transport::new(stdin, stdout, stderr));
         self.file = Some(file);
@@ -236,25 +252,22 @@ impl Client {
                 panic!("should be in state 'uninitialized'");
             }
         }
-        if let Some(stdin) = &mut self.stdin {
-            let params =
-                Self::init_params(self.file.as_ref().unwrap(), "test".to_string()).unwrap();
+        // if let Some(stdin) = &mut self.stdin {
+        let params = Self::init_params(self.file.as_ref().unwrap(), "test".to_string()).unwrap();
 
-            let client_capabilities = serde_json::to_value(params).unwrap();
+        let client_capabilities = serde_json::to_value(params).unwrap();
 
-            let mut request = jsonrpc::request(
-                0,
-                lsp_types::request::Initialize::METHOD,
-                Some(client_capabilities),
-            );
-            let header = format!("Content-Length: {}\r\n\r\n", request.len());
+        let mut request = jsonrpc::request(
+            0,
+            lsp_types::request::Initialize::METHOD,
+            Some(client_capabilities),
+        );
+        let all = format!("Content-Length: {}\r\n\r\n{}", request.len(), request);
 
-            request.insert_str(0, &header);
-
-            return Some(request);
-            // stdin.write_all(request.as_bytes()).await.unwrap();
-            // stdin.flush().await.unwrap();
-        }
+        return Some(all);
+        // stdin.write_all(request.as_bytes()).await.unwrap();
+        // stdin.flush().await.unwrap();
+        // }
         None
 
         // let transport = self.transport.as_mut().unwrap();
@@ -460,10 +473,8 @@ impl Transport {
     {
         let mut request = jsonrpc::request(request_id, method, params);
 
-        let header = format!("Content-Length: {}\r\n\r\n", request.len());
-
-        request.insert_str(0, &header);
-        writer.write_all(request.as_bytes()).await.unwrap();
+        let all = format!("Content-Length: {}\r\n\r\n{}", request.len(), request);
+        writer.write_all(all.as_bytes()).await.unwrap();
         writer.flush().await.unwrap();
     }
 
@@ -535,3 +546,70 @@ impl From<Receiver<jsonrpc::Message>> for TransportReceiver {
 }
 
 // TODO use treesitter https://github.com/nvim-treesitter/nvim-treesitter?tab=readme-ov-file#supported-languages
+
+// This actually runs???
+async fn aaa(chan_reader: channel::Receiver<String>, stdin: BufWriter<ChildStdin>) {
+    let mut stdin = stdin; // make it so stdin mutable
+    loop {
+        // waits for message from channel
+        let msg = chan_reader.recv().await;
+        if let Ok(msg) = msg {
+            stdin.write(msg.as_bytes()).await.unwrap();
+            stdin.flush().await.unwrap();
+            // Self::send(msg).await;
+        }
+    }
+}
+
+// async fn bbb(chan_writer: channel::Sender<String>, ) {
+//     let mut buf = vec![0; 1024];
+//     loop {
+//         let cnt = stdout.read(&mut buf).await.unwrap();
+//         if cnt > 0 {
+//             chan_writer
+//                 .send(String::from_utf8(buf[..cnt].to_vec()).unwrap())
+//                 .await
+//                 .unwrap()
+//         }
+//     }
+
+//     // let result = Self::recv(buf).await.unwrap();
+//     // if let Some(result) = result {
+//     //     chan_writer.send(result).await.unwrap();
+//     // }
+// }
+
+async fn ccc(
+    chan_writer: channel::Sender<String>,
+    mut stdout: BufReader<ChildStdout>,
+    mut stderr: BufReader<ChildStderr>,
+) {
+    smol::future::race(
+        async {
+            let mut buf = vec![0; 1024];
+            loop {
+                let cnt = stdout.read(&mut buf).await.unwrap();
+                if cnt > 0 {
+                    let msg = String::from_utf8(buf[..cnt].to_vec()).unwrap();
+                    chan_writer.send(msg).await.unwrap()
+                }
+            }
+        },
+        async {
+            let mut buf = vec![0; 1024];
+            loop {
+                let cnt = stderr.read(&mut buf).await.unwrap();
+                if cnt > 0 {
+                    let msg = String::from_utf8(buf[..cnt].to_vec()).unwrap();
+                    chan_writer.send(msg).await.unwrap()
+                }
+            }
+        },
+    )
+    .await;
+
+    // let result = Self::recv(buf).await.unwrap();
+    // if let Some(result) = result {
+    //     chan_writer.send(result).await.unwrap();
+    // }
+}
