@@ -17,6 +17,7 @@ use iced::{
     widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
 use key_binds::KeyBind;
+use log::debug;
 use rfd::FileDialog;
 
 mod cli;
@@ -62,6 +63,7 @@ enum Message {
     SetAutoScroll(Option<f32>),
     LSPMessage(lsp::Message),
     LSPInitialized(()), // TODO rename
+    Special(()),
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -153,11 +155,12 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenFileSelector => {
-                if let Some(file_path) =
-                    select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
-                {
-                    return self.open_file(file_path).unwrap();
-                }
+                return Task::perform(Self::do_lsp(), Message::Special);
+                // if let Some(file_path) =
+                //     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
+                // {
+                //     return self.open_file(file_path).unwrap();
+                // }
             }
             Message::OpenDirectorySelector => {
                 if let Some(dir_path) =
@@ -265,6 +268,9 @@ impl App {
             Message::SetAutoScroll(auto_scroll) => {
                 self.auto_scroll = auto_scroll;
             }
+            Message::Special(_) => {
+                debug!("hello")
+            }
             #[allow(unreachable_patterns)]
             _ => {
                 todo!()
@@ -357,11 +363,11 @@ impl App {
         })];
 
         // subscription::run takes in a function that returns a stream of messages
-        if let Some(client) = &self.lsp_client {
-            if let Some(transport) = client.new_transport_receiver() {
-                subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
-            }
-        }
+        // if let Some(client) = &self.lsp_client {
+        //     if let Some(transport) = client.new_transport_receiver() {
+        //         subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
+        //     }
+        // }
 
         if let Some(_) = self.auto_scroll {
             subscriptions
@@ -383,6 +389,19 @@ impl App {
         self.project_tree.insert(path, 0, 0);
     }
 
+    async fn do_lsp() {
+        let mut lsp_client = lsp::Client::new();
+        lsp_client.connect(PathBuf::from("./src/tab.rs")).unwrap();
+        // let fut = lsp_client.initialize().await;
+
+        // self.lsp_client = Some(lsp_client);
+        lsp_client.initialize().await;
+
+        let mut buf = vec![0; 1024];
+        let size = lsp_client.read(&mut buf).await.unwrap();
+        debug!("hello {:?} {}", buf, size)
+    }
+
     fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
         if let Some(pos) = self.tabs.position(file_path.clone()) {
@@ -393,18 +412,11 @@ impl App {
         let index = self.tabs.insert(Some(file_path.clone()))?;
         self.tabs.activate(index);
         self.redraw_active_editor();
-
-        let mut lsp_client = lsp::Client::new();
-        lsp_client.connect(file_path).unwrap();
-        let fut = lsp_client.initialize();
-
-        self.lsp_client = Some(lsp_client);
-
         // self.
         // // TODO transport falls out of scope when task is done -> cannot read replies from server
         //
         // self.lsp_client = Some(lsp_client);
-        Ok(Task::perform(fut, Message::LSPInitialized))
+        Ok(Task::none())
     }
 
     fn redraw_active_editor(&mut self) {

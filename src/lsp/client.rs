@@ -1,8 +1,7 @@
-use iced::Task;
 use lsp_types::{self, request::Request};
 use serde_json::json;
 use smol::{
-    block_on,
+    Task, block_on,
     channel::{self, Receiver},
     future,
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
@@ -90,6 +89,7 @@ pub struct Client {
     pub file: Option<PathBuf>,
     pub transport: Option<Transport>,
     pub server_capabilities: Option<lsp_types::ServerCapabilities>,
+    pub child: Option<Child>,
 }
 
 impl Client {
@@ -99,6 +99,8 @@ impl Client {
             file: None,
             transport: None,
             server_capabilities: None,
+
+            child: None,
         }
     }
 
@@ -122,27 +124,45 @@ impl Client {
                 panic!("{:?}", e)
             }
         };
-
-        let stdout = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
-        let stdin = BufWriter::new(process.stdin.take().expect("Failed to open stdin"));
-        let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
+        self.child = Some(process);
+        // let stdout = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
+        // let stdin = BufWriter::new(process.stdin.take().expect("Failed to open stdin"));
+        // let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
 
         self.kind = ClientKind::Uninitialized;
-        self.transport = Some(Transport::new(stdin, stdout, stderr));
+        // self.transport = Some(Transport::new(stdin, stdout, stderr));
         self.file = Some(file);
 
         Ok(())
     }
 
-    pub fn new_transport_receiver(&self) -> Option<TransportReceiver> {
-        match &self.kind {
-            ClientKind::Initialized => {}
-            _ => {
-                return None;
+    // pub fn new_transport_receiver(&self) -> Option<TransportReceiver> {
+    //     match &self.kind {
+    //         ClientKind::Initialized => {}
+    //         _ => {
+    //             return None;
+    //         }
+    //     }
+    //     let receiver = self.transport.as_ref().unwrap().from_server.clone();
+    //     Some(receiver.into())
+    // }
+
+    // async fn send(){
+    //     let mut request = jsonrpc::request(request_id, method, params);
+
+    //     let header = format!("Content-Length: {}\r\n\r\n", request.len());
+
+    //     request.insert_str(0, &header);
+    //     writer.write_all(request.as_bytes()).await.unwrap();
+    //     writer.flush().await.unwrap();
+    // }
+    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        if let Some(c) = &mut self.child {
+            if let Some(stdout) = &mut c.stdout {
+                return stdout.read(buf).await;
             }
         }
-        let receiver = self.transport.as_ref().unwrap().from_server.clone();
-        Some(receiver.into())
+        Ok(0)
     }
 
     pub async fn initialize(&mut self) {
@@ -152,22 +172,41 @@ impl Client {
                 panic!("should be in state 'uninitialized'");
             }
         }
-        let transport = self.transport.as_mut().unwrap();
+        if let Some(c) = &mut self.child {
+            // let c.stderr.take().expect("No stderr");
+            let mut stdin = c.stdin.take().expect("No stdin");
+            // c.stdout.take().expect("No stdout");
 
-        let params = Self::init_params(self.file.as_ref().unwrap(), "test".to_string()).unwrap();
+            let params =
+                Self::init_params(self.file.as_ref().unwrap(), "test".to_string()).unwrap();
 
-        let client_capabilities = serde_json::to_value(params).unwrap();
+            let client_capabilities = serde_json::to_value(params).unwrap();
 
-        // adds a new channel sender
-        let sender = transport.to_server.clone();
-        sender
-            .send(jsonrpc::Request::new(
+            let mut request = jsonrpc::request(
                 0,
                 lsp_types::request::Initialize::METHOD,
                 Some(client_capabilities),
-            ))
-            .await
-            .unwrap()
+            );
+            let header = format!("Content-Length: {}\r\n\r\n", request.len());
+
+            request.insert_str(0, &header);
+            stdin.write_all(request.as_bytes()).await.unwrap();
+            stdin.flush().await.unwrap();
+        }
+        ()
+
+        // let transport = self.transport.as_mut().unwrap();
+
+        // // adds a new channel sender
+        // let sender = transport.to_server.clone();
+        // sender
+        //     .send(jsonrpc::Request::new(
+        //         0,
+        //         lsp_types::request::Initialize::METHOD,
+        //         Some(client_capabilities),
+        //     ))
+        //     .await
+        //     .unwrap()
         // TODO handle request in task, not here
         // .unwrap();
 
