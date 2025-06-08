@@ -8,7 +8,7 @@ use smol::{
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     spawn,
 };
-use std::{io::Stdout, path::PathBuf, process::Stdio, str::FromStr, string::ParseError};
+use std::{path::PathBuf, process::Stdio, str::FromStr, string::ParseError};
 
 use super::jsonrpc;
 
@@ -89,8 +89,29 @@ pub struct Client {
     pub file: Option<PathBuf>,
     pub transport: Option<Transport>,
     pub server_capabilities: Option<lsp_types::ServerCapabilities>,
-    pub child: Option<Child>,
+    pub stdin: Option<BufWriter<ChildStdin>>,
+    pub stdout: Option<BufReader<ChildStdout>>,
+
+    _write_worker: Option<channel::Receiver<String>>, // single instance
+    _writer: Option<channel::Sender<String>>,         // cloned
+
+    _reader_worker: Option<channel::Sender<String>>, // single instance
+    _reader: Option<channel::Receiver<String>>,      // cloned
 }
+
+// so that Task::perform can clone only Writer, not whole client
+pub struct Writer {
+    writer: channel::Sender<String>,
+}
+
+impl Writer {
+    pub async fn write(&self, msg: String) -> Result<(), channel::SendError<String>> {
+        self.writer.send(msg).await
+    }
+}
+
+// so that lsp_worker can clone only writer
+pub struct Worker {}
 
 impl Client {
     pub fn new() -> Self {
@@ -100,8 +121,40 @@ impl Client {
             transport: None,
             server_capabilities: None,
 
-            child: None,
+            stdin: None,
+            stdout: None,
+            _write_worker: None,
+            _writer: None,
+            _reader_worker: None,
+            _reader: None,
         }
+    }
+
+    pub async fn worker(&mut self) {
+        let obj = self._write_worker.as_ref().unwrap().recv().await.unwrap();
+        self.stdin
+            .as_mut()
+            .unwrap()
+            .write(obj.as_bytes())
+            .await
+            .unwrap();
+        // smol::future::race(
+        //     async {
+        //         let obj = self._write_worker.unwrap().recv().await.unwrap();
+        //         self.stdin.unwrap().write(obj.as_bytes());
+        //     },
+        //     async {
+        //         let m
+        //         self.stdout.unwrap().read();
+        //         self._reader_worker.unwrap().send(msg).await;
+        //     },
+        // )
+        // .await
+    }
+
+    pub fn new_writer(&self) -> Writer {
+        let w = self._writer.clone();
+        Writer { writer: w.unwrap() }
     }
 
     pub fn connect(&mut self, file: PathBuf) -> Result<(), Error> {
@@ -124,9 +177,20 @@ impl Client {
                 panic!("{:?}", e)
             }
         };
-        self.child = Some(process);
         // let stdout = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
-        // let stdin = BufWriter::new(process.stdin.take().expect("Failed to open stdin"));
+        self.stdin = Some(BufWriter::new(
+            process.stdin.take().expect("Failed to open stdin"),
+        ));
+        let (send, recv) = channel::unbounded::<String>();
+        self._writer = Some(send);
+        self._write_worker = Some(recv);
+
+        self.stdout = Some(BufReader::new(
+            process.stdout.take().expect("Failed to open stdout"),
+        ));
+        let (send, recv) = channel::unbounded::<String>();
+        self._reader = Some(recv);
+        self._reader_worker = Some(send);
         // let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
 
         self.kind = ClientKind::Uninitialized;
@@ -156,27 +220,23 @@ impl Client {
     //     writer.write_all(request.as_bytes()).await.unwrap();
     //     writer.flush().await.unwrap();
     // }
-    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        if let Some(c) = &mut self.child {
-            if let Some(stdout) = &mut c.stdout {
-                return stdout.read(buf).await;
-            }
-        }
-        Ok(0)
-    }
+    // pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+    //     if let Some(c) = &mut self.child {
+    //         if let Some(stdout) = &mut c.stdout {
+    //             return stdout.read(buf).await;
+    //         }
+    //     }
+    //     Ok(0)
+    // }
 
-    pub async fn initialize(&mut self) {
+    pub fn initialize(&mut self) -> Option<String> {
         match &self.kind {
             ClientKind::Uninitialized => {}
             _ => {
                 panic!("should be in state 'uninitialized'");
             }
         }
-        if let Some(c) = &mut self.child {
-            // let c.stderr.take().expect("No stderr");
-            let mut stdin = c.stdin.take().expect("No stdin");
-            // c.stdout.take().expect("No stdout");
-
+        if let Some(stdin) = &mut self.stdin {
             let params =
                 Self::init_params(self.file.as_ref().unwrap(), "test".to_string()).unwrap();
 
@@ -190,10 +250,12 @@ impl Client {
             let header = format!("Content-Length: {}\r\n\r\n", request.len());
 
             request.insert_str(0, &header);
-            stdin.write_all(request.as_bytes()).await.unwrap();
-            stdin.flush().await.unwrap();
+
+            return Some(request);
+            // stdin.write_all(request.as_bytes()).await.unwrap();
+            // stdin.flush().await.unwrap();
         }
-        ()
+        None
 
         // let transport = self.transport.as_mut().unwrap();
 

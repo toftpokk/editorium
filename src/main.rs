@@ -19,6 +19,7 @@ use iced::{
 use key_binds::KeyBind;
 use log::debug;
 use rfd::FileDialog;
+use smol::channel;
 
 mod cli;
 mod font;
@@ -63,7 +64,7 @@ enum Message {
     SetAutoScroll(Option<f32>),
     LSPMessage(lsp::Message),
     LSPInitialized(()), // TODO rename
-    Special(()),
+    Special(Result<(), channel::SendError<String>>),
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -157,7 +158,9 @@ impl App {
             Message::OpenFileSelector => {
                 let mut lsp = self.prepare_lsp();
                 self.lsp_client = lsp;
-                return Task::perform(self.lsp_client.initialize(), Message::Special);
+                let msg = self.lsp_client.initialize();
+                let w = self.lsp_client.new_writer();
+                return Task::perform(async move { w.write(msg.unwrap()).await }, Message::Special);
                 // if let Some(file_path) =
                 //     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
                 // {
@@ -370,6 +373,10 @@ impl App {
         //         subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
         //     }
         // }
+        // TODO maybe give ownership of Stdout reader to subscription?
+        if let Some(client) = &self.lsp_client.stdin {
+            subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
+        }
 
         if let Some(_) = self.auto_scroll {
             subscriptions
@@ -397,14 +404,14 @@ impl App {
         lsp_client
     }
 
-    async fn do_lsp() {
-        let mut lsp_client = lsp::Client::new();
-        lsp_client.initialize().await;
+    // async fn do_lsp() {
+    //     let mut lsp_client = lsp::Client::new();
+    //     lsp_client.initialize().await;
 
-        let mut buf = vec![0; 1024];
-        let size = lsp_client.read(&mut buf).await.unwrap();
-        debug!("hello {:?} {}", buf, size)
-    }
+    //     let mut buf = vec![0; 1024];
+    //     let size = lsp_client.read(&mut buf).await.unwrap();
+    //     debug!("hello {:?} {}", buf, size)
+    // }
 
     fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
@@ -499,8 +506,8 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
 fn lsp_worker(receiver: lsp::TransportReceiver) -> impl futures::Stream<Item = Message> {
     stream::channel(100, |mut output| async move {
         loop {
-            let msg = receiver.recv().await;
-            output.send(Message::LSPMessage(msg)).await.unwrap();
+            // let msg = receiver.recv().await;
+            // output.send(Message::LSPMessage(msg)).await.unwrap();
         }
     })
 }
