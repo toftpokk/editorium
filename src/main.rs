@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    fs,
+    fs, io,
     path::PathBuf,
     str::FromStr,
     sync::{OnceLock, RwLock},
@@ -61,6 +61,7 @@ enum Message {
     AutoScroll,
     SetAutoScroll(Option<f32>),
     LSPMessage(lsp::Message),
+    LSPInitialized(()), // TODO rename
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -105,7 +106,7 @@ struct App {
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
-    lsp_client: lsp::Client,
+    lsp_client: Option<lsp::Client>,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -132,21 +133,21 @@ impl App {
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
-            lsp_client: lsp::Client::new(),
+            lsp_client: None,
         };
 
-        if let Some(path) = cli.path {
+        let task = if let Some(path) = cli.path {
             if path.is_dir() {
                 app.open_project(path);
+                Task::none()
             } else {
-                app.open_file(path.clone());
-                // TODO handle unwrap
-                app.lsp_client.connect(path.clone()).unwrap();
-                app.lsp_client.initialize();
+                app.open_file(path.clone()).unwrap()
             }
-        }
+        } else {
+            Task::none()
+        };
 
-        (app, Task::none())
+        (app, task)
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -155,22 +156,24 @@ impl App {
                 if let Some(file_path) =
                     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
                 {
-                    self.open_file(file_path)
+                    return self.open_file(file_path).unwrap();
                 }
             }
             Message::OpenDirectorySelector => {
                 if let Some(dir_path) =
                     select_dir(&self.current_project.as_ref().map(|p| p.path.clone()))
                 {
-                    self.open_project(dir_path)
+                    self.open_project(dir_path);
                 }
             }
             Message::TabSelected(tab) => {
                 self.tabs.activate(tab);
                 self.redraw_active_editor();
             }
-            Message::OpenProject(project) => self.open_project(project),
-            Message::OpenFile(file_path) => self.open_file(file_path),
+            Message::OpenProject(project) => {
+                self.open_project(project);
+            }
+            Message::OpenFile(file_path) => return self.open_file(file_path).unwrap(),
             Message::SaveFile => {
                 if let Some(active) = self.tabs.active() {
                     let tab = self.tabs.tab_mut(active).unwrap();
@@ -246,9 +249,7 @@ impl App {
                                 }
                             }
                         }
-                        project::NodeKind::File => {
-                            self.open_file(node.path);
-                        }
+                        project::NodeKind::File => return self.open_file(node.path).unwrap(),
                     }
                 }
             }
@@ -261,13 +262,14 @@ impl App {
                     }
                 }
             }
-            Message::SetAutoScroll(auto_scroll) => self.auto_scroll = auto_scroll,
+            Message::SetAutoScroll(auto_scroll) => {
+                self.auto_scroll = auto_scroll;
+            }
             #[allow(unreachable_patterns)]
             _ => {
                 todo!()
             }
         }
-
         Task::none()
     }
 
@@ -355,8 +357,10 @@ impl App {
         })];
 
         // subscription::run takes in a function that returns a stream of messages
-        if let Some(transport) = self.lsp_client.new_transport_receiver() {
-            subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
+        if let Some(client) = &self.lsp_client {
+            if let Some(transport) = client.new_transport_receiver() {
+                subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
+            }
         }
 
         if let Some(_) = self.auto_scroll {
@@ -379,22 +383,28 @@ impl App {
         self.project_tree.insert(path, 0, 0);
     }
 
-    fn open_file(&mut self, file_path: PathBuf) {
+    fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
         if let Some(pos) = self.tabs.position(file_path.clone()) {
             self.tabs.activate(pos);
             self.redraw_active_editor();
-            return;
+            return Ok(Task::none());
         }
-        let index = match self.tabs.insert(Some(file_path)) {
-            Ok(ok) => ok,
-            Err(err) => {
-                log::error!("could not open file: {}", err);
-                return;
-            }
-        };
+        let index = self.tabs.insert(Some(file_path.clone()))?;
         self.tabs.activate(index);
-        self.redraw_active_editor()
+        self.redraw_active_editor();
+
+        let mut lsp_client = lsp::Client::new();
+        lsp_client.connect(file_path).unwrap();
+        let fut = lsp_client.initialize();
+
+        self.lsp_client = Some(lsp_client);
+
+        // self.
+        // // TODO transport falls out of scope when task is done -> cannot read replies from server
+        //
+        // self.lsp_client = Some(lsp_client);
+        Ok(Task::perform(fut, Message::LSPInitialized))
     }
 
     fn redraw_active_editor(&mut self) {

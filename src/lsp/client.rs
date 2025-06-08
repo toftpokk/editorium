@@ -1,7 +1,8 @@
+use iced::Task;
 use lsp_types::{self, request::Request};
 use serde_json::json;
 use smol::{
-    Task, block_on,
+    block_on,
     channel::{self, Receiver},
     future,
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
@@ -108,7 +109,7 @@ impl Client {
         }
         // note cat reads stdin and echos to stdout
         // good command for test
-        let process = Command::new("gopls")
+        let process = Command::new("rust-analyzer")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -166,35 +167,39 @@ impl Client {
                 Some(client_capabilities),
             ))
             .await
-            .unwrap();
+            .unwrap()
+        // TODO handle request in task, not here
+        // .unwrap();
 
-        let receiver = transport.from_server.clone();
-        let response = receiver.recv().await.unwrap();
+        // let receiver = transport.from_server.clone();
+        // // TODO: this recv may die
+        // let response = receiver.recv().await.unwrap();
+        // log::error!("what2?");
 
-        if !response.is_response() {
-            panic!("message out of order: {:?}", response)
-        }
-        let response = response.as_response();
-        // TODO handle out of order
-        if response.id != 0 {
-            panic!("out of order: {:?}", response)
-        }
-        if let Some(err) = response.error {
-            panic!("initialization error: {}", err)
-        }
-        let initialize_result: lsp_types::InitializeResult =
-            serde_json::from_value(response.result.unwrap()).unwrap();
+        // if !response.is_response() {
+        //     panic!("message out of order: {:?}", response)
+        // }
+        // let response = response.as_response();
+        // // TODO handle out of order
+        // if response.id != 0 {
+        //     panic!("out of order: {:?}", response)
+        // }
+        // if let Some(err) = response.error {
+        //     panic!("initialization error: {}", err)
+        // }
+        // let initialize_result: lsp_types::InitializeResult =
+        //     serde_json::from_value(response.result.unwrap()).unwrap();
 
-        // initialize_result.server_info
-        if let Some(server_info) = initialize_result.server_info {
-            // Note: server version is too detailed
-            log::info!("Connected to LSP server: {}", server_info.name)
-        } else {
-            log::info!("Connected to LSP server: unknown server name")
-        }
+        // // initialize_result.server_info
+        // if let Some(server_info) = initialize_result.server_info {
+        //     // Note: server version is too detailed
+        //     log::info!("Connected to LSP server: {}", server_info.name)
+        // } else {
+        //     log::info!("Connected to LSP server: unknown server name")
+        // }
 
-        self.server_capabilities = Some(initialize_result.capabilities);
-        self.kind = ClientKind::Initialized;
+        // self.server_capabilities = Some(initialize_result.capabilities);
+        // self.kind = ClientKind::Initialized;
     }
 
     pub fn init_params(
@@ -262,9 +267,9 @@ impl Client {
 // instead of directly r/w to buffer
 pub struct Transport {
     from_server: channel::Receiver<jsonrpc::Message>,
-    from_server_worker: Task<()>,
+    _from_server_worker: Task<()>,
     to_server: channel::Sender<jsonrpc::Request>,
-    to_server_worker: Task<()>,
+    _to_server_worker: Task<()>,
 }
 
 impl Transport {
@@ -284,9 +289,9 @@ impl Transport {
         // spawn(future)
         Self {
             from_server,
-            from_server_worker,
+            _from_server_worker: from_server_worker,
             to_server,
-            to_server_worker,
+            _to_server_worker: to_server_worker,
         }
     }
 
