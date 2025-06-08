@@ -108,7 +108,7 @@ struct App {
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
-    lsp_client: Option<lsp::Client>,
+    lsp_client: lsp::Client,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -135,7 +135,7 @@ impl App {
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
-            lsp_client: None,
+            lsp_client: lsp::Client::new(),
         };
 
         let task = if let Some(path) = cli.path {
@@ -155,7 +155,9 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenFileSelector => {
-                return Task::perform(Self::do_lsp(), Message::Special);
+                let mut lsp = self.prepare_lsp();
+                self.lsp_client = lsp;
+                return Task::perform(self.lsp_client.initialize(), Message::Special);
                 // if let Some(file_path) =
                 //     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
                 // {
@@ -389,12 +391,14 @@ impl App {
         self.project_tree.insert(path, 0, 0);
     }
 
-    async fn do_lsp() {
+    fn prepare_lsp(&self) -> lsp::Client {
         let mut lsp_client = lsp::Client::new();
         lsp_client.connect(PathBuf::from("./src/tab.rs")).unwrap();
-        // let fut = lsp_client.initialize().await;
+        lsp_client
+    }
 
-        // self.lsp_client = Some(lsp_client);
+    async fn do_lsp() {
+        let mut lsp_client = lsp::Client::new();
         lsp_client.initialize().await;
 
         let mut buf = vec![0; 1024];
