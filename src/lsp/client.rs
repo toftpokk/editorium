@@ -78,6 +78,7 @@ pub enum Message {
 //     }
 // }
 
+#[derive(PartialEq)]
 pub enum ClientKind {
     None,
     Uninitialized,
@@ -89,8 +90,6 @@ pub struct Client {
     pub file: Option<PathBuf>,
     pub transport: Option<Transport>,
     pub server_capabilities: Option<lsp_types::ServerCapabilities>,
-    pub stdin: Option<BufWriter<ChildStdin>>,
-    pub stdout: Option<BufReader<ChildStdout>>,
 
     _process: Option<Child>,         // if removed, Child removed from scope
     _write_worker: Option<Task<()>>, // single instance
@@ -130,8 +129,6 @@ impl Client {
             server_capabilities: None,
 
             _process: None,
-            stdin: None,
-            stdout: None,
             _writer: None,
             _reader: None,
             _reader_worker: None,
@@ -139,9 +136,18 @@ impl Client {
         }
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.kind == ClientKind::Uninitialized
+    }
+
     pub fn new_writer(&self) -> Writer {
         let w = self._writer.clone();
         Writer { writer: w.unwrap() }
+    }
+
+    pub fn new_reader(&self) -> Reader {
+        let r = self._reader.clone();
+        Reader { reader: r.unwrap() }
     }
 
     pub fn connect(&mut self, file: PathBuf) -> Result<(), Error> {

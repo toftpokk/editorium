@@ -62,7 +62,7 @@ enum Message {
     SaveFile,
     AutoScroll,
     SetAutoScroll(Option<f32>),
-    LSPMessage(lsp::Message),
+    LSPMessage(String),
     LSPInitialized(()), // TODO rename
     Special(Result<(), channel::SendError<String>>),
 }
@@ -276,6 +276,9 @@ impl App {
             Message::Special(_) => {
                 debug!("hello")
             }
+            Message::LSPMessage(msg) => {
+                debug!("{:?}", msg)
+            }
             #[allow(unreachable_patterns)]
             _ => {
                 todo!()
@@ -368,6 +371,12 @@ impl App {
         })];
 
         // subscription::run takes in a function that returns a stream of messages
+        if self.lsp_client.is_connected() {
+            subscriptions.push(Subscription::run_with_id(
+                0,
+                lsp_worker(self.lsp_client.new_reader()),
+            ));
+        }
         // if let Some(client) = &self.lsp_client {
         //     if let Some(transport) = client.new_transport_receiver() {
         //         subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
@@ -400,7 +409,9 @@ impl App {
 
     fn prepare_lsp(&self) -> lsp::Client {
         let mut lsp_client = lsp::Client::new();
-        lsp_client.connect(PathBuf::from("./src/tab.rs")).unwrap();
+        lsp_client
+            .connect(PathBuf::from("file:///src/tab.rs"))
+            .unwrap();
         lsp_client
     }
 
@@ -503,11 +514,11 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
     return None;
 }
 
-fn lsp_worker(receiver: lsp::TransportReceiver) -> impl futures::Stream<Item = Message> {
+fn lsp_worker(reader: lsp::Reader) -> impl futures::Stream<Item = Message> {
     stream::channel(100, |mut output| async move {
         loop {
-            // let msg = receiver.recv().await;
-            // output.send(Message::LSPMessage(msg)).await.unwrap();
+            let msg = reader.read().await.unwrap();
+            output.send(Message::LSPMessage(msg)).await.unwrap();
         }
     })
 }
