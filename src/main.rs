@@ -274,10 +274,10 @@ impl App {
                 self.auto_scroll = auto_scroll;
             }
             Message::Special(_) => {
-                debug!("hello")
+                log::info!("hello")
             }
             Message::LSPMessage(msg) => {
-                debug!("{:?}", msg)
+                log::info!("{}", msg)
             }
             #[allow(unreachable_patterns)]
             _ => {
@@ -514,6 +514,7 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
     return None;
 }
 
+// reads from channel and sends Message::LSPMessage
 fn lsp_worker(reader: lsp::Reader) -> impl futures::Stream<Item = Message> {
     stream::channel(100, |mut output| async move {
         loop {

@@ -526,6 +526,7 @@ impl From<Receiver<jsonrpc::Message>> for TransportReceiver {
 
 // TODO use treesitter https://github.com/nvim-treesitter/nvim-treesitter?tab=readme-ov-file#supported-languages
 
+// reads from channel and writes to stdin
 async fn writer_worker(chan_reader: channel::Receiver<String>, stdin: BufWriter<ChildStdin>) {
     let mut stdin = stdin;
     loop {
@@ -538,6 +539,7 @@ async fn writer_worker(chan_reader: channel::Receiver<String>, stdin: BufWriter<
     }
 }
 
+// reads from stdin and stdout and writes to channel
 async fn reader_worker(
     chan_writer: channel::Sender<String>,
     mut stdout: BufReader<ChildStdout>,
