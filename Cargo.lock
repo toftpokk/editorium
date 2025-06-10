@@ -1157,6 +1157,7 @@ dependencies = [
  "serde_json",
  "smol",
  "syntect",
+ "url",
 ]
 
 [[package]]

@@ -20,8 +20,8 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn connect() -> Client {
-        let process = process::Command::new("rust-analyzer")
+    pub fn connect(program: String) -> Client {
+        let process = process::Command::new(program)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -90,7 +90,7 @@ impl Client {
 
     pub fn build_init_message(
         &mut self,
-        workspace: &path::PathBuf,
+        workspace: url::Url,
         workspace_name: String,
     ) -> jsonrpc::Request {
         let params = Self::init_params(workspace, workspace_name);
@@ -120,14 +120,11 @@ impl Client {
         }
     }
 
-    fn init_params(
-        workspace: &path::PathBuf,
-        workspace_name: String,
-    ) -> lsp_types::InitializeParams {
+    fn init_params(workspace: url::Url, workspace_name: String) -> lsp_types::InitializeParams {
         let process_id = std::process::id();
 
         // TODO handle parse url error
-        let workspace_uri = lsp_types::Uri::from_str(workspace.to_str().unwrap()).unwrap();
+        let workspace_uri = lsp_types::Uri::from_str(workspace.as_str()).unwrap();
         let workspace_folder = lsp_types::WorkspaceFolder {
             uri: workspace_uri,
             name: workspace_name,

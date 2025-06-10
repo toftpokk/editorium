@@ -140,10 +140,9 @@ impl App {
 
         let task = if let Some(path) = cli.path {
             if path.is_dir() {
-                app.open_project(path);
-                Task::none()
+                Task::done(Message::OpenProject(path))
             } else {
-                app.open_file(path.clone()).unwrap()
+                Task::done(Message::OpenFile(path))
             }
         } else {
             Task::none()
@@ -155,20 +154,11 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenFileSelector => {
-                let mut lsp = lsp::Client::connect();
-                let msg =
-                    lsp.build_init_message(&PathBuf::from("file:///src/tab.rs"), "tab".to_string());
-                let w = lsp.new_writer();
-                self.lsp_client = Some(lsp);
-                return Task::perform(async move { w.write(msg).await }, |x| match x {
-                    Ok(_) => Message::None,
-                    Err(err) => Message::Error(format!("{:?}", err)),
-                });
-                // if let Some(file_path) =
-                //     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
-                // {
-                //     return self.open_file(file_path).unwrap();
-                // }
+                if let Some(file_path) =
+                    select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
+                {
+                    return self.open_file(file_path).unwrap();
+                }
             }
             Message::OpenDirectorySelector => {
                 if let Some(dir_path) =
@@ -397,14 +387,14 @@ impl App {
     }
 
     fn open_project(&mut self, path: PathBuf) {
-        let path = fs::canonicalize(&path).expect("could not canonicalize");
+        let path = fs::canonicalize(&path).expect("could not canonicalize"); // methods beginning with 'open' should canonicalize
         self.current_project = Some(project::Project::new(path.clone()));
         self.project_tree.clear();
         self.project_tree.insert(path, 0, 0);
     }
 
     fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
-        let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
+        let file_path = fs::canonicalize(&file_path).expect("could not canonicalize"); // methods beginning with 'open' should canonicalize
         if let Some(pos) = self.tabs.position(file_path.clone()) {
             self.tabs.activate(pos);
             self.redraw_active_editor();
@@ -413,11 +403,22 @@ impl App {
         let index = self.tabs.insert(Some(file_path.clone()))?;
         self.tabs.activate(index);
         self.redraw_active_editor();
-        // self.
-        // // TODO transport falls out of scope when task is done -> cannot read replies from server
-        //
-        // self.lsp_client = Some(lsp_client);
-        Ok(Task::none())
+        Ok(self.start_lsp(&file_path)) // FIXME skip if already running
+    }
+
+    fn start_lsp(&mut self, workspace: &PathBuf) -> Task<Message> {
+        // FIXME Assumes rust analyzer
+        let mut lsp = lsp::Client::connect("rust-analyzer".to_string());
+        let ws = workspace.file_name().unwrap().to_str().unwrap(); // FIXME ws may be dupe
+        let msg =
+            lsp.build_init_message(url::Url::from_file_path(workspace).unwrap(), ws.to_string());
+        let w = lsp.new_writer();
+        self.lsp_client = Some(lsp);
+
+        return Task::perform(async move { w.write(msg).await }, |x| match x {
+            Ok(_) => Message::None,
+            Err(err) => Message::Error(format!("{:?}", err)),
+        });
     }
 
     fn redraw_active_editor(&mut self) {
