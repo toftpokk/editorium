@@ -15,6 +15,8 @@ pub struct Client {
     next_req_id: u64,
     transport: Transport,
     initialized: bool,
+    server_options: Option<lsp_types::InitializeResult>,
+    last_message: Option<String>,
 }
 
 impl Client {
@@ -40,10 +42,49 @@ impl Client {
         );
 
         Self {
+            transport,
+            _process: process,
+
             initialized: false,
             next_req_id: 0,
-            _process: process,
-            transport,
+            last_message: None,
+            server_options: None,
+        }
+    }
+
+    pub fn on_message(&mut self, raw_message: jsonrpc::Message) {
+        if raw_message.is_response() {
+            let message = raw_message.as_response();
+            // TODO buffer request. Assuming response to last request. Ignoring message ID
+            if let Some(method) = &self.last_message {
+                if message.error.is_some() {
+                    log::error!("lsp returned an error to {}: {:?}", method, message)
+                }
+
+                match method.as_str() {
+                    lsp_types::request::Initialize::METHOD => {
+                        self.initialized = true;
+                        let response: lsp_types::InitializeResult =
+                            serde_json::from_value(message.result.unwrap()).unwrap();
+                        let log_string = if let Some(info) = &response.server_info {
+                            if let Some(version) = &info.version {
+                                format!("{} {}", info.name, version)
+                            } else {
+                                format!("{}", info.name)
+                            }
+                        } else {
+                            "no server info".to_string()
+                        };
+                        log::info!("Connected: {}", log_string);
+                        self.server_options = Some(response);
+                    }
+                    _ => log::warn!("response unknown previous method {}: {:?}", method, message),
+                }
+            } else {
+                log::warn!("response to unknown request: {:?}", message)
+            }
+        } else {
+            log::warn!("response to rpc message: {:?}", raw_message)
         }
     }
 
@@ -61,6 +102,7 @@ impl Client {
             lsp_types::request::Initialize::METHOD,
             Some(client_capabilities),
         );
+        self.last_message = Some(lsp_types::request::Initialize::METHOD.to_string());
         self.next_req_id += 1;
 
         req

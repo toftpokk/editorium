@@ -277,7 +277,11 @@ impl App {
                 self.auto_scroll = auto_scroll;
             }
             Message::LSPMessage(msg) => {
-                log::info!("{:?}", msg)
+                if let Some(lsp) = &mut self.lsp_client {
+                    lsp.on_message(msg);
+                } else {
+                    log::warn!("message with no lsp: {:?}", msg)
+                }
             }
             Message::Error(err) => {
                 log::error!("{}", err)
@@ -378,15 +382,6 @@ impl App {
         if let Some(lsp) = &self.lsp_client {
             subscriptions.push(Subscription::run_with_id(0, lsp_worker(lsp.new_reader())));
         }
-        // if let Some(client) = &self.lsp_client {
-        //     if let Some(transport) = client.new_transport_receiver() {
-        //         subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
-        //     }
-        // }
-        // TODO maybe give ownership of Stdout reader to subscription?
-        // if let Some(client) = &self.lsp_client.stdin {
-        //     subscriptions.push(Subscription::run_with_id(0, lsp_worker(transport)));
-        // }
 
         if let Some(_) = self.auto_scroll {
             subscriptions
@@ -407,14 +402,6 @@ impl App {
         self.project_tree.clear();
         self.project_tree.insert(path, 0, 0);
     }
-    // async fn do_lsp() {
-    //     let mut lsp_client = lsp::Client::new();
-    //     lsp_client.initialize().await;
-
-    //     let mut buf = vec![0; 1024];
-    //     let size = lsp_client.read(&mut buf).await.unwrap();
-    //     debug!("hello {:?} {}", buf, size)
-    // }
 
     fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
