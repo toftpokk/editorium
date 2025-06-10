@@ -2,7 +2,7 @@ use lsp_types::request::Request;
 use serde_json::json;
 use smol::{
     Task, channel,
-    io::{self, AsyncReadExt, AsyncWriteExt},
+    io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt},
     process, spawn,
 };
 use std::{self, path, str::FromStr};
@@ -10,6 +10,8 @@ use std::{self, path, str::FromStr};
 use crate::lsp::jsonrpc;
 
 pub struct Client {
+    // if removed, Child removed from scope
+    _process: process::Child,
     next_req_id: u64,
     transport: Transport,
     initialized: bool,
@@ -31,30 +33,17 @@ impl Client {
             }
         };
 
-        let (writer, recv) = channel::unbounded::<String>();
-        // spawn does await automatically, apparently
-        let writer_worker = spawn(writer_worker(
-            recv,
+        let transport = Transport::new(
             io::BufWriter::new(process.stdin.take().expect("Failed to open stdin")),
-        ));
-
-        let (send, reader) = channel::unbounded::<String>();
-        let reader_worker = spawn(reader_worker(
-            send,
             io::BufReader::new(process.stdout.take().expect("Failed to open stdout")),
             io::BufReader::new(process.stderr.take().expect("Failed to open stderr")),
-        ));
+        );
 
         Self {
             initialized: false,
             next_req_id: 0,
-            transport: Transport {
-                _process: process,
-                writer,
-                reader,
-                _writer_worker: writer_worker,
-                _reader_worker: reader_worker,
-            },
+            _process: process,
+            transport,
         }
     }
 
@@ -62,7 +51,7 @@ impl Client {
         &mut self,
         workspace: &path::PathBuf,
         workspace_name: String,
-    ) -> String {
+    ) -> jsonrpc::Request {
         let params = Self::init_params(workspace, workspace_name);
 
         let client_capabilities = serde_json::to_value(params).unwrap();
@@ -74,7 +63,7 @@ impl Client {
         );
         self.next_req_id += 1;
 
-        Self::build_request(req)
+        req
     }
 
     pub fn new_writer(&self) -> Writer {
@@ -87,12 +76,6 @@ impl Client {
         Reader {
             reader: self.transport.reader.clone(),
         }
-    }
-
-    fn build_request(req: jsonrpc::Request) -> String {
-        let req = serde_json::to_string(&req).unwrap();
-
-        return format!("Content-Length: {}\r\n\r\n{}", req.len(), req);
     }
 
     fn init_params(
@@ -160,6 +143,7 @@ impl Client {
 pub enum Error {
     URIParseError(std::string::ParseError),
     Io(std::io::Error),
+    ChannelError(channel::SendError<jsonrpc::Request>),
 }
 
 impl From<std::io::Error> for Error {
@@ -168,83 +152,185 @@ impl From<std::io::Error> for Error {
     }
 }
 
+impl From<channel::SendError<jsonrpc::Request>> for Error {
+    fn from(value: channel::SendError<jsonrpc::Request>) -> Self {
+        Error::ChannelError(value)
+    }
+}
+
 // so that Task::perform can clone only Writer, not whole client
 pub struct Writer {
-    writer: channel::Sender<String>,
+    writer: channel::Sender<jsonrpc::Request>,
 }
 
 impl Writer {
-    pub async fn write(&self, msg: String) -> Result<(), channel::SendError<String>> {
-        self.writer.send(msg).await
+    pub async fn write(&self, msg: jsonrpc::Request) -> Result<(), Error> {
+        match self.writer.send(msg).await {
+            Ok(ok) => Ok(ok),
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
 pub struct Reader {
-    reader: channel::Receiver<String>,
+    reader: channel::Receiver<jsonrpc::Message>,
 }
 
 impl Reader {
-    pub async fn read(&self) -> Result<String, channel::RecvError> {
+    pub async fn read(&self) -> Result<jsonrpc::Message, channel::RecvError> {
         self.reader.recv().await
     }
 }
 
+// a set of message channels for reading & writing to buffer
+// instead of directly r/w to buffer
 struct Transport {
-    // if removed, Child removed from scope
-    _process: process::Child,
-
     // single instance
     _writer_worker: Task<()>,
     _reader_worker: Task<()>,
 
     // templates for cloning
-    reader: channel::Receiver<String>,
-    writer: channel::Sender<String>,
+    reader: channel::Receiver<jsonrpc::Message>,
+    writer: channel::Sender<jsonrpc::Request>,
 }
 
-// reads from channel and writes to stdin
-async fn writer_worker(
-    chan_reader: channel::Receiver<String>,
-    stdin: io::BufWriter<process::ChildStdin>,
-) {
-    let mut stdin = stdin;
-    loop {
-        // waits for message from channel
-        let msg = chan_reader.recv().await;
-        if let Ok(msg) = msg {
-            stdin.write(msg.as_bytes()).await.unwrap();
-            stdin.flush().await.unwrap();
+impl Transport {
+    fn new(
+        stdin: io::BufWriter<process::ChildStdin>,
+        stdout: io::BufReader<process::ChildStdout>,
+        stderr: io::BufReader<process::ChildStderr>,
+    ) -> Self {
+        // from lsp server
+        let (writer, recv) = channel::unbounded::<jsonrpc::Request>();
+        // spawn does await automatically, apparently
+        let writer_worker = spawn(Self::writer_worker(recv, stdin));
+
+        // to lsp server
+        let (send, reader) = channel::unbounded::<jsonrpc::Message>();
+        let reader_worker = spawn(Self::reader_worker(send, stdout, stderr));
+
+        Transport {
+            _writer_worker: writer_worker,
+            _reader_worker: reader_worker,
+            reader: reader,
+            writer: writer,
         }
     }
-}
+    // reads from channel and writes to stdin
+    async fn writer_worker(
+        chan_reader: channel::Receiver<jsonrpc::Request>,
+        stdin: io::BufWriter<process::ChildStdin>,
+    ) {
+        let mut stdin = stdin;
+        loop {
+            // waits for message from channel
+            let msg = chan_reader.recv().await;
+            if let Ok(msg) = msg {
+                Self::send(
+                    msg.id.as_u64().unwrap(),
+                    &msg.method,
+                    msg.params,
+                    &mut stdin,
+                )
+                .await;
+            }
+        }
+    }
 
-// reads from stdin and stdout and writes to channel
-async fn reader_worker(
-    chan_writer: channel::Sender<String>,
-    mut stdout: io::BufReader<process::ChildStdout>,
-    mut stderr: io::BufReader<process::ChildStderr>,
-) {
-    smol::future::race(
-        async {
-            let mut buf = vec![0; 1024];
-            loop {
-                let cnt = stdout.read(&mut buf).await.unwrap();
-                if cnt > 0 {
-                    let msg = String::from_utf8(buf[..cnt].to_vec()).unwrap();
-                    chan_writer.send(msg).await.unwrap()
+    // reads from stdin and stdout and writes to channel
+    // recieve jsonrpc payload
+    // note: AsyncRead polls, does not wait
+    // maybe optimize?
+    async fn reader_worker(
+        chan_writer: channel::Sender<jsonrpc::Message>,
+        mut stdout: io::BufReader<process::ChildStdout>,
+        mut stderr: io::BufReader<process::ChildStderr>,
+    ) {
+        loop {
+            smol::future::race(
+                Self::read_from_buf(&chan_writer, &mut stdout),
+                Self::read_from_buf(&chan_writer, &mut stderr),
+            )
+            .await;
+        }
+    }
+
+    async fn read_from_buf<T>(
+        chan_writer: &channel::Sender<jsonrpc::Message>,
+        buf: &mut io::BufReader<T>,
+    ) where
+        T: io::AsyncRead + Unpin, // need to be able to read async
+    {
+        let result = Self::recv(buf).await.unwrap();
+        if let Some(result) = result {
+            chan_writer.send(result).await.unwrap();
+        }
+    }
+
+    async fn send<T>(
+        request_id: u64,
+        method: &str,
+        params: Option<serde_json::Value>,
+        writer: &mut io::BufWriter<T>,
+    ) where
+        T: io::AsyncWrite + Unpin, // need to be able to read async
+    {
+        let request = jsonrpc::request(request_id, method, params);
+
+        let all = format!("Content-Length: {}\r\n\r\n{}", request.len(), request);
+        writer.write_all(all.as_bytes()).await.unwrap();
+        writer.flush().await.unwrap();
+    }
+
+    // recieve jsonrpc payload
+    // note: AsyncRead polls, does not wait
+    // maybe optimize?
+    async fn recv<T>(reader: &mut io::BufReader<T>) -> Result<Option<jsonrpc::Message>, Error>
+    where
+        T: io::AsyncRead + Unpin, // need to be able to read async
+    {
+        let mut content_length = 0;
+        let mut content_type = "application/vscode-jsonrpc; charset=utf-8".to_string();
+        loop {
+            let mut header_line = String::new();
+            reader.read_line(&mut header_line).await?;
+            // read_line will return empty string while polling
+            if header_line.len() < 1 {
+                return Ok(None);
+            }
+
+            let header_line = header_line.as_str().trim();
+            if header_line.len() == 0 {
+                // end of headers
+                break;
+            }
+
+            let parts = header_line.split_once(":").unwrap();
+            let header = parts.0.trim();
+            let value = parts.1.trim();
+            match header {
+                "Content-Length" => {
+                    content_length = value.parse().unwrap();
+                }
+                "Content-Type" => {
+                    content_type = value.to_string();
+                }
+                header => {
+                    log::warn!("Unknown header: {}", header)
                 }
             }
-        },
-        async {
-            let mut buf = vec![0; 1024];
-            loop {
-                let cnt = stderr.read(&mut buf).await.unwrap();
-                if cnt > 0 {
-                    let msg = String::from_utf8(buf[..cnt].to_vec()).unwrap();
-                    chan_writer.send(msg).await.unwrap()
-                }
-            }
-        },
-    )
-    .await;
+        }
+
+        let mut buf = vec![0; content_length];
+        reader.read_exact(&mut buf).await?;
+
+        if content_type != "application/vscode-jsonrpc; charset=utf-8" {
+            panic!("Unknown content type: {}", content_type);
+        }
+
+        let payload = String::from_utf8(buf).unwrap();
+
+        Ok(Some(jsonrpc::Message::from(payload)))
+    }
 }
+// TODO use treesitter https://github.com/nvim-treesitter/nvim-treesitter?tab=readme-ov-file#supported-languages

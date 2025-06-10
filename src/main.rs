@@ -61,9 +61,9 @@ enum Message {
     SaveFile,
     AutoScroll,
     SetAutoScroll(Option<f32>),
-    LSPMessage(String),
-    LSPInitialized(()), // TODO rename
-    Special(Result<(), channel::SendError<String>>),
+    Error(String),
+    LSPMessage(lsp::Message),
+    None,
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -160,7 +160,10 @@ impl App {
                     lsp.build_init_message(&PathBuf::from("file:///src/tab.rs"), "tab".to_string());
                 let w = lsp.new_writer();
                 self.lsp_client = Some(lsp);
-                return Task::perform(async move { w.write(msg).await }, Message::Special);
+                return Task::perform(async move { w.write(msg).await }, |x| match x {
+                    Ok(_) => Message::None,
+                    Err(err) => Message::Error(format!("{:?}", err)),
+                });
                 // if let Some(file_path) =
                 //     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
                 // {
@@ -273,12 +276,13 @@ impl App {
             Message::SetAutoScroll(auto_scroll) => {
                 self.auto_scroll = auto_scroll;
             }
-            Message::Special(_) => {
-                log::info!("hello")
-            }
             Message::LSPMessage(msg) => {
-                log::info!("{}", msg)
+                log::info!("{:?}", msg)
             }
+            Message::Error(err) => {
+                log::error!("{}", err)
+            }
+            Message::None => (),
             #[allow(unreachable_patterns)]
             _ => {
                 todo!()
@@ -505,7 +509,9 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
 // reads from channel and sends Message::LSPMessage
 fn lsp_worker(reader: lsp::Reader) -> impl futures::Stream<Item = Message> {
     stream::channel(100, |mut output| async move {
+        let mut buf = String::new();
         loop {
+            // FIXME: errors and stdout may come together
             let msg = reader.read().await.unwrap();
             output.send(Message::LSPMessage(msg)).await.unwrap();
         }
