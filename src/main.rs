@@ -17,7 +17,6 @@ use iced::{
     widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
 use key_binds::KeyBind;
-use log::debug;
 use rfd::FileDialog;
 use smol::channel;
 
@@ -109,7 +108,7 @@ struct App {
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
-    lsp_client: lsp::Client,
+    lsp_client: Option<lsp::Client>,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -136,7 +135,7 @@ impl App {
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
-            lsp_client: lsp::Client::new(),
+            lsp_client: None,
         };
 
         let task = if let Some(path) = cli.path {
@@ -156,11 +155,12 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenFileSelector => {
-                let mut lsp = self.prepare_lsp();
-                self.lsp_client = lsp;
-                let msg = self.lsp_client.initialize();
-                let w = self.lsp_client.new_writer();
-                return Task::perform(async move { w.write(msg.unwrap()).await }, Message::Special);
+                let mut lsp = lsp::Client::connect();
+                let msg =
+                    lsp.build_init_message(&PathBuf::from("file:///src/tab.rs"), "tab".to_string());
+                let w = lsp.new_writer();
+                self.lsp_client = Some(lsp);
+                return Task::perform(async move { w.write(msg).await }, Message::Special);
                 // if let Some(file_path) =
                 //     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
                 // {
@@ -371,11 +371,8 @@ impl App {
         })];
 
         // subscription::run takes in a function that returns a stream of messages
-        if self.lsp_client.is_connected() {
-            subscriptions.push(Subscription::run_with_id(
-                0,
-                lsp_worker(self.lsp_client.new_reader()),
-            ));
+        if let Some(lsp) = &self.lsp_client {
+            subscriptions.push(Subscription::run_with_id(0, lsp_worker(lsp.new_reader())));
         }
         // if let Some(client) = &self.lsp_client {
         //     if let Some(transport) = client.new_transport_receiver() {
@@ -406,15 +403,6 @@ impl App {
         self.project_tree.clear();
         self.project_tree.insert(path, 0, 0);
     }
-
-    fn prepare_lsp(&self) -> lsp::Client {
-        let mut lsp_client = lsp::Client::new();
-        lsp_client
-            .connect(PathBuf::from("file:///src/tab.rs"))
-            .unwrap();
-        lsp_client
-    }
-
     // async fn do_lsp() {
     //     let mut lsp_client = lsp::Client::new();
     //     lsp_client.initialize().await;
