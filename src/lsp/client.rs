@@ -1,4 +1,4 @@
-use lsp_types::request::Request;
+use lsp_types::{notification::Notification, request::Request};
 use serde_json::json;
 use smol::{
     Task, channel,
@@ -7,15 +7,16 @@ use smol::{
 };
 use std::{self, path, str::FromStr};
 
-use crate::lsp::jsonrpc;
+use crate::lsp::{self, jsonrpc};
 
 pub struct Client {
+    pub initialized: bool,
+    server_options: Option<lsp_types::InitializeResult>,
+
     // if removed, Child removed from scope
     _process: process::Child,
     next_req_id: u64,
     transport: Transport,
-    initialized: bool,
-    server_options: Option<lsp_types::InitializeResult>,
     last_message: Option<String>,
 }
 
@@ -88,11 +89,7 @@ impl Client {
         }
     }
 
-    pub fn build_init_message(
-        &mut self,
-        workspace: url::Url,
-        workspace_name: String,
-    ) -> jsonrpc::Request {
+    pub fn initialize(&mut self, workspace: url::Url, workspace_name: String) -> jsonrpc::Request {
         let params = Self::init_params(workspace, workspace_name);
 
         let client_capabilities = serde_json::to_value(params).unwrap();
@@ -108,15 +105,44 @@ impl Client {
         req
     }
 
+    pub fn text_document_did_open(
+        file: url::Url,
+        language_id: String,
+        version: i32,
+        text: &str,
+    ) -> jsonrpc::Message {
+        let params = lsp_types::DidOpenTextDocumentParams {
+            text_document: lsp_types::TextDocumentItem {
+                uri: lsp_types::Uri::from_str(file.as_str()).unwrap(),
+                language_id: language_id,
+                version: version,
+                text: text.to_string(),
+            },
+        };
+
+        let req = jsonrpc::Notification::new(
+            lsp_types::notification::DidOpenTextDocument::METHOD,
+            Some(serde_json::to_value(params).unwrap()),
+        );
+
+        req.as_message()
+    }
+
     pub fn new_writer(&self) -> Writer {
         Writer {
             writer: self.transport.writer.clone(),
         }
     }
 
-    pub fn new_reader(&self) -> Reader {
+    pub fn new_reader(&self) -> Reader<jsonrpc::Message> {
         Reader {
             reader: self.transport.reader.clone(),
+        }
+    }
+
+    pub fn new_reader_error(&self) -> Reader<String> {
+        Reader {
+            reader: self.transport.error.clone(),
         }
     }
 
@@ -182,7 +208,7 @@ impl Client {
 pub enum Error {
     URIParseError(std::string::ParseError),
     Io(std::io::Error),
-    ChannelError(channel::SendError<jsonrpc::Request>),
+    ChannelError(channel::SendError<jsonrpc::Message>),
 }
 
 impl From<std::io::Error> for Error {
@@ -191,19 +217,19 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<channel::SendError<jsonrpc::Request>> for Error {
-    fn from(value: channel::SendError<jsonrpc::Request>) -> Self {
+impl From<channel::SendError<jsonrpc::Message>> for Error {
+    fn from(value: channel::SendError<jsonrpc::Message>) -> Self {
         Error::ChannelError(value)
     }
 }
 
 // so that Task::perform can clone only Writer, not whole client
 pub struct Writer {
-    writer: channel::Sender<jsonrpc::Request>,
+    writer: channel::Sender<jsonrpc::Message>,
 }
 
 impl Writer {
-    pub async fn write(&self, msg: jsonrpc::Request) -> Result<(), Error> {
+    pub async fn write(&self, msg: jsonrpc::Message) -> Result<(), Error> {
         match self.writer.send(msg).await {
             Ok(ok) => Ok(ok),
             Err(err) => Err(err.into()),
@@ -211,12 +237,12 @@ impl Writer {
     }
 }
 
-pub struct Reader {
-    reader: channel::Receiver<jsonrpc::Message>,
+pub struct Reader<T> {
+    reader: channel::Receiver<T>,
 }
 
-impl Reader {
-    pub async fn read(&self) -> Result<jsonrpc::Message, channel::RecvError> {
+impl<T> Reader<T> {
+    pub async fn read(&self) -> Result<T, channel::RecvError> {
         self.reader.recv().await
     }
 }
@@ -227,10 +253,12 @@ struct Transport {
     // single instance
     _writer_worker: Task<()>,
     _reader_worker: Task<()>,
+    _error_worker: Task<()>,
 
     // templates for cloning
+    writer: channel::Sender<jsonrpc::Message>,
     reader: channel::Receiver<jsonrpc::Message>,
-    writer: channel::Sender<jsonrpc::Request>,
+    error: channel::Receiver<String>,
 }
 
 impl Transport {
@@ -239,25 +267,30 @@ impl Transport {
         stdout: io::BufReader<process::ChildStdout>,
         stderr: io::BufReader<process::ChildStderr>,
     ) -> Self {
-        // from lsp server
-        let (writer, recv) = channel::unbounded::<jsonrpc::Request>();
         // spawn does await automatically, apparently
+        // to lsp server
+        let (writer, recv) = channel::unbounded::<jsonrpc::Message>();
         let writer_worker = spawn(Self::writer_worker(recv, stdin));
 
-        // to lsp server
+        // from lsp server
         let (send, reader) = channel::unbounded::<jsonrpc::Message>();
-        let reader_worker = spawn(Self::reader_worker(send, stdout, stderr));
+        let reader_worker = spawn(Self::reader_worker(send, stdout));
+
+        let (send, error) = channel::unbounded::<String>();
+        let error_worker = spawn(Self::error_worker(send, stderr));
 
         Transport {
             _writer_worker: writer_worker,
             _reader_worker: reader_worker,
-            reader: reader,
-            writer: writer,
+            _error_worker: error_worker,
+            writer,
+            reader,
+            error,
         }
     }
     // reads from channel and writes to stdin
     async fn writer_worker(
-        chan_reader: channel::Receiver<jsonrpc::Request>,
+        chan_reader: channel::Receiver<jsonrpc::Message>,
         stdin: io::BufWriter<process::ChildStdin>,
     ) {
         let mut stdin = stdin;
@@ -265,58 +298,52 @@ impl Transport {
             // waits for message from channel
             let msg = chan_reader.recv().await;
             if let Ok(msg) = msg {
-                Self::send(
-                    msg.id.as_u64().unwrap(),
-                    &msg.method,
-                    msg.params,
-                    &mut stdin,
-                )
-                .await;
+                Self::send(msg, &mut stdin).await;
             }
         }
     }
 
-    // reads from stdin and stdout and writes to channel
+    async fn error_worker(
+        chan_writer: channel::Sender<String>,
+        mut stderr: io::BufReader<process::ChildStderr>,
+    ) {
+        loop {
+            let mut buf = String::new();
+            stderr.read_line(&mut buf).await.unwrap();
+            // let result = Self::recv(&mut stderr).await.unwrap();
+            if buf.len() > 0 {
+                chan_writer.send(buf).await.unwrap();
+            }
+        }
+    }
+
+    // reads from stdin and writes to channel
     // recieve jsonrpc payload
     // note: AsyncRead polls, does not wait
     // maybe optimize?
     async fn reader_worker(
         chan_writer: channel::Sender<jsonrpc::Message>,
         mut stdout: io::BufReader<process::ChildStdout>,
-        mut stderr: io::BufReader<process::ChildStderr>,
     ) {
         loop {
-            smol::future::race(
-                Self::read_from_buf(&chan_writer, &mut stdout),
-                Self::read_from_buf(&chan_writer, &mut stderr),
-            )
-            .await;
+            let result = Self::recv(&mut stdout).await.unwrap();
+            if let Some(result) = result {
+                chan_writer.send(result).await.unwrap();
+            }
         }
     }
 
-    async fn read_from_buf<T>(
-        chan_writer: &channel::Sender<jsonrpc::Message>,
-        buf: &mut io::BufReader<T>,
-    ) where
-        T: io::AsyncRead + Unpin, // need to be able to read async
-    {
-        let result = Self::recv(buf).await.unwrap();
-        if let Some(result) = result {
-            chan_writer.send(result).await.unwrap();
-        }
-    }
-
-    async fn send<T>(
-        request_id: u64,
-        method: &str,
-        params: Option<serde_json::Value>,
-        writer: &mut io::BufWriter<T>,
-    ) where
+    async fn send<T>(message: jsonrpc::Message, writer: &mut io::BufWriter<T>)
+    where
         T: io::AsyncWrite + Unpin, // need to be able to read async
     {
-        let request = jsonrpc::request(request_id, method, params);
+        let request = message.to_string();
 
-        let all = format!("Content-Length: {}\r\n\r\n{}", request.len(), request);
+        let all = format!(
+            "Content-Length: {}\r\n\r\n{}",
+            request.len(),
+            request.to_string()
+        );
         writer.write_all(all.as_bytes()).await.unwrap();
         writer.flush().await.unwrap();
     }

@@ -2,7 +2,7 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fs, io,
-    path::PathBuf,
+    path::{self, PathBuf},
     str::FromStr,
     sync::{OnceLock, RwLock},
 };
@@ -370,7 +370,10 @@ impl App {
 
         // subscription::run takes in a function that returns a stream of messages
         if let Some(lsp) = &self.lsp_client {
-            subscriptions.push(Subscription::run_with_id(0, lsp_worker(lsp.new_reader())));
+            subscriptions.push(Subscription::run_with_id(
+                0,
+                lsp_worker(lsp.new_reader(), lsp.new_reader_error()),
+            ));
         }
 
         if let Some(_) = self.auto_scroll {
@@ -403,22 +406,48 @@ impl App {
         let index = self.tabs.insert(Some(file_path.clone()))?;
         self.tabs.activate(index);
         self.redraw_active_editor();
-        Ok(self.start_lsp(&file_path)) // FIXME skip if already running
+
+        let req = lsp::Client::text_document_did_open(
+            url::Url::from_file_path(file_path).unwrap(),
+            "rust".to_string(),
+            0,
+            "a",
+        );
+        // start lsp & send request
+        let task = if let Some(lsp) = &self.lsp_client {
+            let writer = lsp.new_writer();
+            Self::try_lsp_send(writer, req)
+        } else {
+            let (lsp, task) = Self::lsp_start();
+
+            let writer = lsp.new_writer();
+            self.lsp_client = Some(lsp);
+            task.chain(Self::try_lsp_send(writer, req))
+        };
+
+        Ok(task)
     }
 
-    fn start_lsp(&mut self, workspace: &PathBuf) -> Task<Message> {
-        // FIXME Assumes rust analyzer
-        let mut lsp = lsp::Client::connect("rust-analyzer".to_string());
-        let ws = workspace.file_name().unwrap().to_str().unwrap(); // FIXME ws may be dupe
-        let msg =
-            lsp.build_init_message(url::Url::from_file_path(workspace).unwrap(), ws.to_string());
-        let w = lsp.new_writer();
-        self.lsp_client = Some(lsp);
-
-        return Task::perform(async move { w.write(msg).await }, |x| match x {
+    // TODO if init message from server has not arrived, queue messages
+    // assuming init message arrived
+    fn try_lsp_send(writer: lsp::Writer, request: lsp::Message) -> Task<Message> {
+        Task::perform(async move { writer.write(request).await }, |x| match x {
             Ok(_) => Message::None,
             Err(err) => Message::Error(format!("{:?}", err)),
-        });
+        })
+    }
+
+    fn lsp_start() -> (lsp::Client, Task<Message>) {
+        let workspace = path::PathBuf::from_str("/home").unwrap();
+        // // FIXME Assumes rust analyzer
+        let mut lsp = lsp::Client::connect("rust-analyzer".to_string());
+        let name = workspace.file_name().unwrap().to_str().unwrap(); // FIXME ws may be dupe
+        let req = lsp.initialize(
+            url::Url::from_file_path(&workspace).unwrap(),
+            name.to_string(),
+        );
+        let writer = lsp.new_writer();
+        (lsp, Self::try_lsp_send(writer, req.as_message()))
     }
 
     fn redraw_active_editor(&mut self) {
@@ -495,13 +524,33 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
 }
 
 // reads from channel and sends Message::LSPMessage
-fn lsp_worker(reader: lsp::Reader) -> impl futures::Stream<Item = Message> {
+fn lsp_worker(
+    reader: lsp::Reader<lsp::Message>,
+    error: lsp::Reader<String>,
+) -> impl futures::Stream<Item = Message> {
     stream::channel(100, |mut output| async move {
-        let mut buf = String::new();
         loop {
-            // FIXME: errors and stdout may come together
-            let msg = reader.read().await.unwrap();
-            output.send(Message::LSPMessage(msg)).await.unwrap();
+            smol::future::race(
+                async {
+                    let msg = match reader.read().await {
+                        Ok(ok) => ok,
+                        Err(err) => {
+                            panic!("channel closed: {}", err);
+                        }
+                    };
+                    output.send(Message::LSPMessage(msg)).await.unwrap();
+                },
+                async {
+                    let msg = match error.read().await {
+                        Ok(ok) => ok,
+                        Err(err) => {
+                            panic!("channel closed: {}", err);
+                        }
+                    };
+                    log::error!("{}", msg)
+                },
+            )
+            .await
         }
     })
 }

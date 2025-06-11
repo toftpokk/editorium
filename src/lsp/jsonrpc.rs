@@ -45,6 +45,10 @@ impl Message {
         self.result.is_some()
     }
 
+    pub fn to_string(self) -> String {
+        serde_json::to_string(&self).unwrap()
+    }
+
     pub fn as_request(self) -> Request {
         Request {
             jsonrpc: self.jsonrpc,
@@ -91,6 +95,21 @@ impl Request {
             id: serde_json::to_value(id).unwrap(),
         }
     }
+
+    pub fn to_string(self) -> String {
+        serde_json::to_string(&self).unwrap()
+    }
+
+    pub fn as_message(self) -> Message {
+        Message {
+            jsonrpc: self.jsonrpc,
+            id: Some(self.id),
+            method: Some(self.method),
+            params: self.params,
+            result: None,
+            error: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -102,10 +121,25 @@ pub struct Notification {
     pub params: Option<Value>,
 }
 
-pub fn request(id: u64, method: &str, params: Option<Value>) -> String {
-    let request = Request::new(id, method, params);
+impl Notification {
+    pub fn new(method: &str, params: Option<Value>) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            method: method.to_string(),
+            params,
+        }
+    }
 
-    serde_json::to_string(&request).unwrap()
+    pub fn as_message(self) -> Message {
+        Message {
+            jsonrpc: self.jsonrpc,
+            id: None,
+            method: Some(self.method),
+            params: self.params,
+            result: None,
+            error: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
