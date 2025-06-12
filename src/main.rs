@@ -14,8 +14,12 @@ use iced::{
     event,
     futures::{self, SinkExt},
     stream, time,
-    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
+    widget::{
+        Column, Container, PaneGrid, Scrollable, button, column, pane_grid, pick_list, row,
+        scrollable, text_input,
+    },
 };
+use iced_aw::TabBar;
 use key_binds::KeyBind;
 use rfd::FileDialog;
 
@@ -321,7 +325,54 @@ impl App {
 
         let pane_grid = PaneGrid::new(&self.panes, |_, state, _| {
             if state.pane_type == PaneType::Editor {
-                pane_grid::Content::new(self.buffers.view())
+                let main = if let Some(active) = self.buffers.active() {
+                    let buf = self.buffers.buf(active).unwrap();
+
+                    let mut col = Column::new();
+                    if buf.is_search_open() {
+                        col = col.push(
+                            text_input("Find Something...", &buf.search.text)
+                                .on_input(Message::BufferSearch)
+                                .id(buf.search.id.clone()),
+                        )
+                    }
+
+                    // TODO: halloy's combo_box
+                    col.push(
+                        text_box::text_box(&buf.editor, buf.metrics).id(buf.text_box_id.clone()),
+                    )
+                } else {
+                    Column::new()
+                };
+
+                let mut tab_bar = self
+                    .buffers
+                    .buffers()
+                    .iter()
+                    .fold(TabBar::new(Message::BufferSelected), |tab_bar, tab| {
+                        let idx = tab_bar.size();
+                        tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
+                    })
+                    .on_close(Message::BufferClose)
+                    .width(Length::Shrink)
+                    .tab_width(Length::Shrink);
+
+                if let Some(active) = self.buffers.active() {
+                    tab_bar = tab_bar.set_active_tab(&active);
+                }
+
+                pane_grid::Content::new(
+                    Column::new()
+                        .push(
+                            Scrollable::new(tab_bar)
+                                .width(Length::Fill)
+                                .height(Length::Shrink)
+                                .direction(scrollable::Direction::Horizontal(
+                                    scrollable::Scrollbar::default().scroller_width(0),
+                                )),
+                        )
+                        .push(main),
+                )
             } else {
                 let file_tree = self.project_tree.view();
 

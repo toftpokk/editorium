@@ -89,6 +89,14 @@ impl Store {
         self.buffers.get_mut(index)
     }
 
+    pub fn buf(&self, index: usize) -> Option<&Buffer> {
+        self.buffers.get(index)
+    }
+
+    pub fn buffers(&self) -> &Vec<Buffer> {
+        &self.buffers
+    }
+
     pub fn position(&self, path: PathBuf) -> Option<usize> {
         self.buffers.iter().position(|x| {
             if let Some(x_path) = &x.file_path {
@@ -98,58 +106,21 @@ impl Store {
             }
         })
     }
-
-    pub fn view(&self) -> Element<Message, theme::MyTheme> {
-        let main = if let Some(active) = self.active {
-            let buf = self.buffers.get(active).unwrap();
-            buf.view()
-        } else {
-            // scrollable(Row::new())
-            Column::new()
-        };
-
-        let mut tab_bar = self
-            .buffers
-            .iter()
-            .fold(TabBar::new(Message::BufferSelected), |tab_bar, tab| {
-                let idx = tab_bar.size();
-                tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
-            })
-            .on_close(Message::BufferClose)
-            .width(Length::Shrink)
-            .tab_width(Length::Shrink);
-
-        if let Some(active) = self.active {
-            tab_bar = tab_bar.set_active_tab(&active);
-        }
-
-        Column::new()
-            .push(
-                Scrollable::new(tab_bar)
-                    .width(Length::Fill)
-                    .height(Length::Shrink)
-                    .direction(scrollable::Direction::Horizontal(
-                        scrollable::Scrollbar::default().scroller_width(0),
-                    )),
-            )
-            .push(main)
-            .into()
-    }
 }
 
 pub struct Search {
-    id: text_input::Id,
-    text: String,
+    pub id: text_input::Id,
+    pub text: String,
 }
 
 pub struct Buffer {
     pub file_path: Option<PathBuf>,
 
-    editor: RwLock<SyntaxEditor<'static, 'static>>, // RwLock allows writing during draw
+    pub editor: RwLock<SyntaxEditor<'static, 'static>>, // RwLock allows writing during draw
     attrs: Attrs<'static>,
-    metrics: Metrics,
-    text_box_id: iced::advanced::widget::Id,
-    search: Search,
+    pub metrics: Metrics,
+    pub text_box_id: iced::advanced::widget::Id,
+    pub search: Search,
     search_open: bool,
     lsp: Option<lsp::Id>,
 }
@@ -216,6 +187,10 @@ impl Buffer {
         Ok(())
     }
 
+    pub fn is_search_open(&self) -> bool {
+        self.search_open
+    }
+
     pub fn search_open(&mut self, text: Option<String>) -> Task<Message> {
         if let Some(text) = text {
             self.search.text = text;
@@ -243,25 +218,11 @@ impl Buffer {
         });
     }
 
-    pub fn view(&self) -> Column<Message, theme::MyTheme> {
-        let mut col = Column::new();
-        if self.search_open {
-            col = col.push(
-                text_input("Find Something...", &self.search.text)
-                    .on_input(Message::BufferSearch)
-                    .id(self.search.id.clone()),
-            )
-        }
-
-        // TODO: halloy's combo_box
-        col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
-    }
-
     pub fn redraw(&self) {
         self.editor.write().unwrap().set_redraw(true);
     }
 
-    fn get_name(&self) -> String {
+    pub fn get_name(&self) -> String {
         if let Some(path) = &self.file_path {
             path.file_name()
                 .expect("invalid file name")
