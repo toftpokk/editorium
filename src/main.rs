@@ -2,7 +2,7 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fs, io,
-    path::{self, PathBuf},
+    path::PathBuf,
     str::FromStr,
     sync::{OnceLock, RwLock},
 };
@@ -310,7 +310,7 @@ impl App {
                 open: pick_list::Icon {
                     font: font::ICON_SOLID,
                     // todo: list of codepoints used
-                    code_point: font::arrow_dowwn(),
+                    code_point: font::arrow_down(),
                     size: None,
                     line_height: iced::widget::text::LineHeight::default(),
                     shaping: iced::widget::text::Shaping::Basic,

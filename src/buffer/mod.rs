@@ -4,11 +4,10 @@ use std::{fs, io};
 
 use cosmic_text::{Attrs, Edit, Metrics, SyntaxEditor, SyntaxSystem};
 use iced::advanced::widget::operate;
-use iced::widget::{self, Column, Scrollable, scrollable, text_input};
-use iced::{Element, Length, Task, advanced};
-use iced_aw::TabBar;
+use iced::widget::text_input;
+use iced::{Task, advanced};
 
-use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, lsp, text_box, theme};
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, lsp};
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
@@ -198,7 +197,7 @@ impl Buffer {
         // note: text seach is a good example of how events flow
         // also: editor is a good example of how leaf nodes work (widgets)
         self.search_open = true;
-        widget::text_input::focus(self.search.id.clone())
+        text_input::focus(self.search.id.clone())
     }
 
     pub fn search_close(&mut self) -> Task<Message> {

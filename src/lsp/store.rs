@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    collections::hash_map::Entry,
     fmt::Display,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},

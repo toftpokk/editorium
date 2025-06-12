@@ -29,7 +29,7 @@ pub fn load() -> Vec<Cow<'static, [u8]>> {
     ]
 }
 
-pub fn arrow_dowwn() -> char {
+pub fn arrow_down() -> char {
     '\u{f0d7}'
 }
 
