@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    collections::hash_map::Entry,
     fmt::Display,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -30,6 +31,15 @@ pub enum ServerState {
     Running(lsp::Server),
 }
 
+impl ServerState {
+    fn set_state_running(self) -> Self {
+        match self {
+            ServerState::Starting(server, _) => return Self::Running(server),
+            ServerState::Running(server) => Self::Running(server),
+        }
+    }
+}
+
 pub struct Store {
     workspace: Option<PathBuf>,
     pub servers: HashMap<Id, ServerState>,
@@ -49,12 +59,28 @@ impl Store {
         self.workspace = Some(workspace)
     }
 
-    pub fn process(&mut self, id: Id, message: lsp::Message) {
-        let Some(entry) = self.servers.get(&id) else {
-            log::warn!("message unknown server: {} {:?}", id, message);
-            return;
+    pub fn on_message(&mut self, id: Id, message: lsp::Message) {
+        let entry = match self.servers.get_mut(&id) {
+            Some(entry) => entry,
+            None => {
+                log::warn!("message unknown server: {} {:?}", id, message);
+                return;
+            }
         };
-        log::info!("{} {:?}", id, message)
+
+        match entry {
+            ServerState::Starting(server, _) => {
+                server.on_message(message);
+                if server.initialized {
+                    // FIXME feels hacky
+                    let (id, server_state) = self.servers.remove_entry(&id).unwrap();
+                    self.servers.insert(id, server_state.set_state_running());
+                }
+            }
+            ServerState::Running(server) => {
+                server.on_message(message);
+            }
+        }
     }
 
     pub fn get_or_init_lsp(&mut self, lang: String) -> Id {

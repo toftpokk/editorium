@@ -54,19 +54,18 @@ impl Server {
     }
 
     pub fn on_message(&mut self, raw_message: jsonrpc::Message) {
-        if raw_message.is_response() {
-            let message = raw_message.as_response();
+        if let Some(response) = raw_message.clone().as_response() {
             // TODO buffer request. Assuming response to last request. Ignoring message ID
             if let Some(method) = &self.last_message {
-                if message.error.is_some() {
-                    log::error!("lsp returned an error to {}: {:?}", method, message)
+                if response.error.is_some() {
+                    log::error!("lsp returned an error to {}: {:?}", method, response)
                 }
 
                 match method.as_str() {
                     lsp_types::request::Initialize::METHOD => {
                         self.initialized = true;
                         let response: lsp_types::InitializeResult =
-                            serde_json::from_value(message.result.unwrap()).unwrap();
+                            serde_json::from_value(response.result.unwrap()).unwrap();
                         let log_string = if let Some(info) = &response.server_info {
                             if let Some(version) = &info.version {
                                 format!("{} {}", info.name, version)
@@ -79,10 +78,14 @@ impl Server {
                         log::info!("Connected: {}", log_string);
                         self.server_options = Some(response);
                     }
-                    _ => log::warn!("response unknown previous method {}: {:?}", method, message),
+                    _ => log::warn!(
+                        "response unknown previous method {}: {:?}",
+                        method,
+                        response
+                    ),
                 }
             } else {
-                log::warn!("response to unknown request: {:?}", message)
+                log::warn!("response to unknown request: {:?}", response)
             }
         } else {
             log::warn!("response to rpc message: {:?}", raw_message)

@@ -265,7 +265,7 @@ impl App {
             Message::SetAutoScroll(auto_scroll) => {
                 self.auto_scroll = auto_scroll;
             }
-            Message::LSPMessage(id, msg) => self.lsp_store.process(id, msg),
+            Message::LSPMessage(id, msg) => self.lsp_store.on_message(id, msg),
             Message::Error(err) => {
                 log::error!("{}", err)
             }

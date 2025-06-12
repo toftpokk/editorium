@@ -66,11 +66,15 @@ impl Message {
         }
     }
 
-    pub fn as_response(self) -> Response {
-        Response {
-            result: self.result,
-            error: self.error,
-            id: self.id.unwrap(),
+    pub fn as_response(self) -> Option<Response> {
+        if self.result.is_some() {
+            Some(Response {
+                result: self.result,
+                error: self.error,
+                id: self.id.unwrap(),
+            })
+        } else {
+            None
         }
     }
 }
