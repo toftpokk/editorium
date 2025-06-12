@@ -2,6 +2,8 @@
 // to bitcoin library
 // inspired by: https://github.com/karyontech/karyon/tree/master/jsonrpc
 
+use std::fmt::Display;
+
 // ref: https://www.jsonrpc.org/specification
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,6 +24,29 @@ pub struct Message {
     pub error: Option<Value>,
 }
 
+impl Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(r) = self.clone().as_request() {
+            write!(f, "{}", r)
+        } else if let Some(r) = self.clone().as_notification() {
+            write!(f, "{}", r)
+        } else if let Some(r) = self.clone().as_response() {
+            write!(f, "{}", r)
+        } else {
+            let s = self.clone();
+            write!(
+                f,
+                "Message: id: {} method: {}\n{}\n{}\n{}",
+                s.id.unwrap_or(Value::Null),
+                s.method.unwrap_or("".to_string()),
+                s.params.unwrap_or(Value::Null),
+                s.result.unwrap_or(Value::Null),
+                s.error.unwrap_or(Value::Null)
+            )
+        }
+    }
+}
+
 impl From<String> for Message {
     fn from(value: String) -> Self {
         serde_json::from_str(&value).unwrap()
@@ -29,43 +54,42 @@ impl From<String> for Message {
 }
 
 impl Message {
+    // technically notifications are a subset of requests
+    // here, they are separate with an umbrella term 'request_object' for both
     pub fn is_request_object(&self) -> bool {
         self.method.is_some()
-    }
-
-    pub fn is_request(&self) -> bool {
-        self.method.is_some() && self.id.is_some()
-    }
-
-    pub fn is_notification(&self) -> bool {
-        self.method.is_some() && self.id.is_none()
-    }
-
-    pub fn is_response(&self) -> bool {
-        self.result.is_some()
     }
 
     pub fn to_string(self) -> String {
         serde_json::to_string(&self).unwrap()
     }
 
-    pub fn as_request(self) -> Request {
-        Request {
-            jsonrpc: self.jsonrpc,
-            method: self.method.unwrap(),
-            params: self.params,
-            id: self.id.unwrap(),
+    pub fn as_request(self) -> Option<Request> {
+        if self.method.is_some() && self.id.is_some() {
+            Some(Request {
+                jsonrpc: self.jsonrpc,
+                method: self.method.unwrap(),
+                params: self.params,
+                id: self.id.unwrap(),
+            })
+        } else {
+            None
         }
     }
 
-    pub fn as_notification(self) -> Notification {
-        Notification {
-            jsonrpc: self.jsonrpc,
-            method: self.method.unwrap(),
-            params: self.params,
+    pub fn as_notification(self) -> Option<Notification> {
+        if self.method.is_some() && self.id.is_none() {
+            Some(Notification {
+                jsonrpc: self.jsonrpc,
+                method: self.method.unwrap(),
+                params: self.params,
+            })
+        } else {
+            None
         }
     }
 
+    // FIXME make up mind on as_x is self or &self
     pub fn as_response(self) -> Option<Response> {
         if self.result.is_some() {
             Some(Response {
@@ -103,6 +127,20 @@ pub struct Request {
     pub id: Value,
 }
 
+impl Display for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(params) = &self.params {
+            write!(
+                f,
+                "Request: with {} method {}\n{}",
+                self.id, self.method, params
+            )
+        } else {
+            write!(f, "Request: with {} method {}", self.id, self.method)
+        }
+    }
+}
+
 impl Request {
     pub fn new(id: u64, method: &str, params: Option<Value>) -> Self {
         Self {
@@ -138,6 +176,16 @@ pub struct Notification {
     pub params: Option<Value>,
 }
 
+impl Display for Notification {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(params) = &self.params {
+            write!(f, "Notification: method {}\n{}", self.method, params)
+        } else {
+            write!(f, "Notification: method {}", self.method)
+        }
+    }
+}
+
 impl Notification {
     pub fn new(method: &str, params: Option<Value>) -> Self {
         Self {
@@ -171,5 +219,17 @@ pub struct Response {
 impl From<String> for Response {
     fn from(value: String) -> Self {
         serde_json::from_str(&value).unwrap()
+    }
+}
+
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(error) = &self.error {
+            write!(f, "Response: for {}\n{}", self.id, error)
+        } else if let Some(result) = &self.result {
+            write!(f, "Response: for {}\n{}", self.id, result)
+        } else {
+            write!(f, "Response: for {}", self.id)
+        }
     }
 }

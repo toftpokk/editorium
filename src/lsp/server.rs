@@ -54,11 +54,11 @@ impl Server {
     }
 
     pub fn on_message(&mut self, raw_message: jsonrpc::Message) -> iced::Task<Message> {
-        if let Some(response) = raw_message.clone().as_response() {
+        let msg: jsonrpc::Message = if let Some(response) = raw_message.clone().as_response() {
             // TODO buffer request. Assuming response to last request. Ignoring message ID
             if let Some(method) = &self.last_message {
                 if response.error.is_some() {
-                    log::error!("lsp returned an error to {}: {:?}", method, response)
+                    log::error!("lsp returned an error to {}:\n{}", method, response)
                 }
 
                 match method.as_str() {
@@ -78,34 +78,31 @@ impl Server {
                         self.server_options = Some(response);
                         log::info!("Connected: {}", log_string);
 
-                        let req = Self::initialized();
-                        let writer = self.new_writer();
-                        return iced::Task::perform(
-                            async move { writer.write(req.as_message()).await },
-                            |x| {
-                                match x {
-                                    Ok(..) => {}
-                                    Err(err) => {
-                                        log::error!("{:?}", err)
-                                    }
-                                }
-                                Message::None
-                            },
-                        );
+                        Self::initialized().as_message()
                     }
-                    _ => log::warn!(
-                        "response unknown previous method {}: {:?}",
-                        method,
-                        response
-                    ),
+                    _ => {
+                        log::warn!("response unknown previous method {}:\n{}", method, response);
+                        return iced::Task::none();
+                    }
                 }
             } else {
-                log::warn!("response to unknown request: {:?}", response)
+                log::warn!("response to unknown request:\n{}", response);
+                return iced::Task::none();
             }
         } else {
-            log::warn!("response to rpc message: {:?}", raw_message)
-        }
-        iced::Task::none()
+            log::warn!("rpc message:\n{}", raw_message);
+            return iced::Task::none();
+        };
+        let writer = self.new_writer();
+        return iced::Task::perform(async move { writer.write(msg).await }, |x| {
+            match x {
+                Ok(..) => {}
+                Err(err) => {
+                    log::error!("{:?}", err)
+                }
+            }
+            Message::None
+        });
     }
 
     pub fn initialize(&mut self) -> jsonrpc::Request {
