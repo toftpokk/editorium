@@ -26,11 +26,11 @@ pub struct Message {
 
 impl Display for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(r) = self.clone().as_request() {
+        if let Some(r) = self.as_request() {
             write!(f, "{}", r)
-        } else if let Some(r) = self.clone().as_notification() {
+        } else if let Some(r) = self.as_notification() {
             write!(f, "{}", r)
-        } else if let Some(r) = self.clone().as_response() {
+        } else if let Some(r) = self.as_response() {
             write!(f, "{}", r)
         } else {
             let s = self.clone();
@@ -64,38 +64,37 @@ impl Message {
         serde_json::to_string(&self).unwrap()
     }
 
-    pub fn as_request(self) -> Option<Request> {
+    pub fn as_request(&self) -> Option<Request> {
         if self.method.is_some() && self.id.is_some() {
             Some(Request {
-                jsonrpc: self.jsonrpc,
-                method: self.method.unwrap(),
-                params: self.params,
-                id: self.id.unwrap(),
+                jsonrpc: self.jsonrpc.clone(),
+                method: self.method.clone().unwrap(),
+                params: self.params.clone(),
+                id: self.id.clone().unwrap(),
             })
         } else {
             None
         }
     }
 
-    pub fn as_notification(self) -> Option<Notification> {
+    pub fn as_notification(&self) -> Option<Notification> {
         if self.method.is_some() && self.id.is_none() {
             Some(Notification {
-                jsonrpc: self.jsonrpc,
-                method: self.method.unwrap(),
-                params: self.params,
+                jsonrpc: self.jsonrpc.clone(),
+                method: self.method.clone().unwrap(),
+                params: self.params.clone(),
             })
         } else {
             None
         }
     }
 
-    // FIXME make up mind on as_x is self or &self
-    pub fn as_response(self) -> Option<Response> {
+    pub fn as_response(&self) -> Option<Response> {
         if self.result.is_some() {
             Some(Response {
-                result: self.result,
-                error: self.error,
-                id: self.id.unwrap(),
+                result: self.result.clone(),
+                error: self.error.clone(),
+                id: self.id.clone().unwrap(),
             })
         } else {
             None

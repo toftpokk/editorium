@@ -54,7 +54,7 @@ impl Server {
     }
 
     pub fn on_message(&mut self, raw_message: jsonrpc::Message) -> iced::Task<Message> {
-        let msg: jsonrpc::Message = if let Some(response) = raw_message.clone().as_response() {
+        let msg: jsonrpc::Message = if let Some(response) = raw_message.as_response() {
             // TODO buffer request. Assuming response to last request. Ignoring message ID
             if let Some(method) = &self.last_message {
                 if response.error.is_some() {
@@ -88,6 +88,19 @@ impl Server {
             } else {
                 log::warn!("response to unknown request:\n{}", response);
                 return iced::Task::none();
+            }
+        } else if let Some(notification) = raw_message.as_notification() {
+            match notification.method.as_str() {
+                lsp_types::notification::PublishDiagnostics::METHOD => {
+                    let notification: lsp_types::PublishDiagnosticsParams =
+                        serde_json::from_value(notification.params.unwrap()).unwrap();
+                    log::warn!("PublishDiagnostics:\n{:?}", notification);
+                    return iced::Task::none();
+                }
+                _ => {
+                    log::warn!("response notification:\n{}", notification);
+                    return iced::Task::none();
+                }
             }
         } else {
             log::warn!("rpc message:\n{}", raw_message);
