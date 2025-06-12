@@ -5,11 +5,11 @@ use smol::{
     io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt},
     process, spawn,
 };
-use std::{self, path, str::FromStr};
+use std::{self, str::FromStr};
 
-use crate::lsp::{self, jsonrpc};
+use crate::lsp::jsonrpc;
 
-pub struct Client {
+pub struct Server {
     pub initialized: bool,
     server_options: Option<lsp_types::InitializeResult>,
 
@@ -20,8 +20,8 @@ pub struct Client {
     last_message: Option<String>,
 }
 
-impl Client {
-    pub fn connect(program: String) -> Client {
+impl Server {
+    pub fn connect(program: String) -> Server {
         let process = process::Command::new(program)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -89,8 +89,8 @@ impl Client {
         }
     }
 
-    pub fn initialize(&mut self, workspace: url::Url, workspace_name: String) -> jsonrpc::Request {
-        let params = Self::init_params(workspace, workspace_name);
+    pub fn initialize(&mut self) -> jsonrpc::Request {
+        let params = Self::init_params();
 
         let client_capabilities = serde_json::to_value(params).unwrap();
 
@@ -146,22 +146,22 @@ impl Client {
         }
     }
 
-    fn init_params(workspace: url::Url, workspace_name: String) -> lsp_types::InitializeParams {
+    fn init_params() -> lsp_types::InitializeParams {
         let process_id = std::process::id();
 
-        // TODO handle parse url error
-        let workspace_uri = lsp_types::Uri::from_str(workspace.as_str()).unwrap();
-        let workspace_folder = lsp_types::WorkspaceFolder {
-            uri: workspace_uri,
-            name: workspace_name,
-        };
+        // TODO later
+        // let workspace_uri = lsp_types::Uri::from_str(workspace.as_str()).unwrap();
+        // let workspace_folder = lsp_types::WorkspaceFolder {
+        //     uri: workspace_uri,
+        //     name: workspace_name,
+        // };
 
         // TODO options for each lsp
         let options = json!({});
 
         lsp_types::InitializeParams {
             process_id: Some(process_id),
-            workspace_folders: Some(vec![workspace_folder]),
+            workspace_folders: None,
             initialization_options: Some(options),
             capabilities: lsp_types::ClientCapabilities {
                 workspace: Some(lsp_types::WorkspaceClientCapabilities {

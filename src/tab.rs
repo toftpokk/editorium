@@ -8,7 +8,7 @@ use iced::widget::{self, Column, Scrollable, scrollable, text_input};
 use iced::{Element, Length, Task, advanced};
 use iced_aw::TabBar;
 
-use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, text_box, theme};
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, lsp, text_box, theme};
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
@@ -70,6 +70,13 @@ impl TabView {
 
     pub fn activate(&mut self, index: usize) {
         if let Some(_) = self.tabs.get(index) {
+            self.active = Some(index)
+        }
+    }
+
+    pub fn activate_with_lsp(&mut self, index: usize, lsp: lsp::Id) {
+        if let Some(tab) = self.tabs.get_mut(index) {
+            tab.register_lsp(lsp);
             self.active = Some(index)
         }
     }
@@ -144,6 +151,7 @@ pub struct Tab {
     text_box_id: iced::advanced::widget::Id,
     search: Search,
     search_open: bool,
+    lsp: Option<lsp::Id>,
 }
 
 impl Tab {
@@ -165,10 +173,15 @@ impl Tab {
             },
             search_open: false,
             text_box_id: advanced::widget::Id::unique(),
+            lsp: None,
         };
         tab.set_config();
 
         tab
+    }
+
+    pub fn register_lsp(&mut self, id: lsp::Id) {
+        self.lsp = Some(id)
     }
 
     pub fn open_file(&mut self, file_path: PathBuf) -> io::Result<()> {

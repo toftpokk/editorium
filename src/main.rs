@@ -10,7 +10,7 @@ use std::{
 use clap::Parser;
 use iced::{
     Element, Length, Subscription, Task,
-    advanced::{graphics::core::keyboard, subscription},
+    advanced::graphics::core::keyboard,
     event,
     futures::{self, SinkExt},
     stream, time,
@@ -18,7 +18,6 @@ use iced::{
 };
 use key_binds::KeyBind;
 use rfd::FileDialog;
-use smol::channel;
 
 mod cli;
 mod font;
@@ -62,7 +61,7 @@ enum Message {
     AutoScroll,
     SetAutoScroll(Option<f32>),
     Error(String),
-    LSPMessage(lsp::Message),
+    LSPMessage(lsp::Id, lsp::Message),
     None,
 }
 
@@ -108,7 +107,7 @@ struct App {
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
-    lsp_client: Option<lsp::Client>,
+    lsp_store: lsp::Store,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -135,7 +134,7 @@ impl App {
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
-            lsp_client: None,
+            lsp_store: lsp::Store::new(),
         };
 
         let task = if let Some(path) = cli.path {
@@ -266,13 +265,7 @@ impl App {
             Message::SetAutoScroll(auto_scroll) => {
                 self.auto_scroll = auto_scroll;
             }
-            Message::LSPMessage(msg) => {
-                if let Some(lsp) = &mut self.lsp_client {
-                    lsp.on_message(msg);
-                } else {
-                    log::warn!("message with no lsp: {:?}", msg)
-                }
-            }
+            Message::LSPMessage(id, msg) => self.lsp_store.process(id, msg),
             Message::Error(err) => {
                 log::error!("{}", err)
             }
@@ -368,13 +361,32 @@ impl App {
             _ => None,
         })];
 
+        // per-server reading tasks
+        let mut workers: Vec<_> = self
+            .lsp_store
+            .servers
+            .iter()
+            .enumerate()
+            .map(|(_, (id, state))| match state {
+                lsp::ServerState::Running(server) => vec![lsp_worker(
+                    id.clone(),
+                    server.new_reader(),
+                    server.new_reader_error(),
+                )],
+                lsp::ServerState::Starting(server, _) => {
+                    vec![lsp_worker(
+                        id.clone(),
+                        server.new_reader(),
+                        server.new_reader_error(),
+                    )]
+                }
+            })
+            .flatten()
+            .collect();
         // subscription::run takes in a function that returns a stream of messages
-        if let Some(lsp) = &self.lsp_client {
-            subscriptions.push(Subscription::run_with_id(
-                0,
-                lsp_worker(lsp.new_reader(), lsp.new_reader_error()),
-            ));
-        }
+        workers.drain(0..).enumerate().for_each(|(idx, x)| {
+            subscriptions.push(Subscription::run_with_id(idx, x));
+        });
 
         if let Some(_) = self.auto_scroll {
             subscriptions
@@ -404,28 +416,22 @@ impl App {
             return Ok(Task::none());
         }
         let index = self.tabs.insert(Some(file_path.clone()))?;
-        self.tabs.activate(index);
+
+        let id = self.lsp_store.get_or_init_lsp("rust".to_string());
+        self.tabs.activate_with_lsp(index, id);
         self.redraw_active_editor();
 
-        let req = lsp::Client::text_document_did_open(
-            url::Url::from_file_path(file_path).unwrap(),
-            "rust".to_string(),
-            0,
-            "a",
-        );
-        // start lsp & send request
-        let task = if let Some(lsp) = &self.lsp_client {
-            let writer = lsp.new_writer();
-            Self::try_lsp_send(writer, req)
-        } else {
-            let (lsp, task) = Self::lsp_start();
+        let pending_tasks: Task<Message> = self
+            .lsp_store
+            .servers
+            .iter_mut()
+            .filter_map(|x| match x.1 {
+                lsp::ServerState::Starting(_, task) => task.take(),
+                lsp::ServerState::Running(..) => None,
+            })
+            .fold(Task::none(), |task, x| task.chain(x));
 
-            let writer = lsp.new_writer();
-            self.lsp_client = Some(lsp);
-            task.chain(Self::try_lsp_send(writer, req))
-        };
-
-        Ok(task)
+        Ok(pending_tasks)
     }
 
     // TODO if init message from server has not arrived, queue messages
@@ -435,19 +441,6 @@ impl App {
             Ok(_) => Message::None,
             Err(err) => Message::Error(format!("{:?}", err)),
         })
-    }
-
-    fn lsp_start() -> (lsp::Client, Task<Message>) {
-        let workspace = path::PathBuf::from_str("/home").unwrap();
-        // // FIXME Assumes rust analyzer
-        let mut lsp = lsp::Client::connect("rust-analyzer".to_string());
-        let name = workspace.file_name().unwrap().to_str().unwrap(); // FIXME ws may be dupe
-        let req = lsp.initialize(
-            url::Url::from_file_path(&workspace).unwrap(),
-            name.to_string(),
-        );
-        let writer = lsp.new_writer();
-        (lsp, Self::try_lsp_send(writer, req.as_message()))
     }
 
     fn redraw_active_editor(&mut self) {
@@ -525,10 +518,11 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
 
 // reads from channel and sends Message::LSPMessage
 fn lsp_worker(
+    id: lsp::Id,
     reader: lsp::Reader<lsp::Message>,
     error: lsp::Reader<String>,
 ) -> impl futures::Stream<Item = Message> {
-    stream::channel(100, |mut output| async move {
+    stream::channel(100, async move |mut output| {
         loop {
             smol::future::race(
                 async {
@@ -538,7 +532,7 @@ fn lsp_worker(
                             panic!("channel closed: {}", err);
                         }
                     };
-                    output.send(Message::LSPMessage(msg)).await.unwrap();
+                    output.send(Message::LSPMessage(id, msg)).await.unwrap();
                 },
                 async {
                     let msg = match error.read().await {
