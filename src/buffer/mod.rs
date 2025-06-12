@@ -94,12 +94,6 @@ impl Store {
         Some(idx)
     }
 
-    pub fn activate_with_lsp(&mut self, id: Id, lsp: lsp::Id) -> Option<usize> {
-        let buf = self.buffers.get_mut(&id)?;
-        buf.register_lsp(lsp);
-        Some(self.activate(id).unwrap())
-    }
-
     pub fn active_idx(&self) -> Option<usize> {
         self.active
     }

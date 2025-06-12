@@ -43,7 +43,7 @@ pub struct Store {
     workspace: Option<PathBuf>,
 
     registered_buffers: Vec<buffer::Id>,
-    pub language_servers: HashMap<Id, ServerState>,
+    pub servers: HashMap<Id, ServerState>,
     languages: HashMap<String, Id>,
 }
 
@@ -51,7 +51,7 @@ impl Store {
     pub fn new() -> Self {
         Self {
             workspace: None,
-            language_servers: HashMap::new(),
+            servers: HashMap::new(),
             languages: HashMap::new(),
             registered_buffers: Vec::new(),
         }
@@ -62,7 +62,7 @@ impl Store {
     }
 
     pub fn on_message(&mut self, id: Id, message: lsp::Message) {
-        let entry = match self.language_servers.get_mut(&id) {
+        let entry = match self.servers.get_mut(&id) {
             Some(entry) => entry,
             None => {
                 log::warn!("message unknown server: {} {:?}", id, message);
@@ -75,15 +75,18 @@ impl Store {
                 server.on_message(message);
                 if server.initialized {
                     // FIXME feels hacky
-                    let (id, server_state) = self.language_servers.remove_entry(&id).unwrap();
-                    self.language_servers
-                        .insert(id, server_state.set_state_running());
+                    let (id, server_state) = self.servers.remove_entry(&id).unwrap();
+                    self.servers.insert(id, server_state.set_state_running());
                 }
             }
             ServerState::Running(server) => {
                 server.on_message(message);
             }
         }
+    }
+
+    pub fn register_buffer(&mut self, id: buffer::Id) {
+        self.registered_buffers.push(id);
     }
 
     pub fn get_or_init_lsp(&mut self, lang: String) -> Id {
@@ -96,7 +99,7 @@ impl Store {
         let fut = async move { writer.write(req.as_message()).await };
 
         let id = Id(ID_COUNTER.fetch_add(1, Ordering::SeqCst));
-        self.language_servers.insert(
+        self.servers.insert(
             id,
             lsp::store::ServerState::Starting(
                 server,

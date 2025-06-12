@@ -428,7 +428,7 @@ impl App {
         // per-server reading tasks
         let mut workers: Vec<_> = self
             .language_servers
-            .language_servers
+            .servers
             .iter()
             .enumerate()
             .map(|(_, (id, state))| match state {
@@ -480,14 +480,15 @@ impl App {
             return Ok(Task::none());
         }
         let buf_id = self.buffers.insert(Some(file_path.clone()))?;
+        self.buffers.activate(buf_id);
 
-        let lsp_id = self.language_servers.get_or_init_lsp("rust".to_string());
-        self.buffers.activate_with_lsp(buf_id, lsp_id);
+        self.language_servers.get_or_init_lsp("rust".to_string());
+        self.language_servers.register_buffer(buf_id);
         self.redraw_active_editor();
 
         let pending_tasks: Task<Message> = self
             .language_servers
-            .language_servers
+            .servers
             .iter_mut()
             .filter_map(|x| match x.1 {
                 lsp::ServerState::Starting(_, task) => task.take(),
