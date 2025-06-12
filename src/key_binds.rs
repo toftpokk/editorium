@@ -33,21 +33,21 @@ pub fn default() -> HashMap<KeyBind, Message> {
             modifiers: Modifiers::ALT,
             key: Key::Character("1".into()),
         },
-        Message::BufferSelected(0),
+        Message::BufferSelectedIdx(0),
     );
     key_bind.insert(
         KeyBind {
             modifiers: Modifiers::ALT,
             key: Key::Character("2".into()),
         },
-        Message::BufferSelected(1),
+        Message::BufferSelectedIdx(1),
     );
     key_bind.insert(
         KeyBind {
             modifiers: Modifiers::ALT,
             key: Key::Character("3".into()),
         },
-        Message::BufferSelected(2),
+        Message::BufferSelectedIdx(2),
     );
     key_bind.insert(
         KeyBind {

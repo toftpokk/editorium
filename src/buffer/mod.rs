@@ -1,6 +1,11 @@
+use std::collections::HashMap;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::RwLock;
-use std::{fs, io};
+use std::{
+    fs, io,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use cosmic_text::{Attrs, Edit, Metrics, SyntaxEditor, SyntaxSystem};
 use iced::advanced::widget::operate;
@@ -12,52 +17,58 @@ use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, lsp};
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
 
+static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+pub struct Id(u64);
+
+impl Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub struct Store {
+    buffers: HashMap<Id, Buffer>,
+
     active: Option<usize>,
-    buffers: Vec<Buffer>,
+    buffer_list: Vec<Id>,
 }
 
 impl Store {
     pub fn new() -> Self {
         Self {
             active: None,
-            buffers: Vec::new(),
+            buffers: HashMap::new(),
+            buffer_list: Vec::new(),
         }
     }
 
-    pub fn insert(&mut self, path: Option<PathBuf>) -> io::Result<usize> {
+    pub fn insert(&mut self, path: Option<PathBuf>) -> io::Result<Id> {
         let mut buf = Buffer::new();
         if let Some(path) = path {
             buf.open_file(path)?;
         }
-        self.buffers.push(buf);
-        Ok(self.buffers.len() - 1)
+
+        let id = Id(ID_COUNTER.fetch_add(1, Ordering::SeqCst));
+        self.buffers.insert(id, buf);
+        self.buffer_list.push(id);
+        Ok(id)
     }
 
-    pub fn remove(&mut self, index: usize) {
-        // check buf exists
-        if let Some(buf) = self.buffers.get(index) {
-            buf
-        } else {
-            return;
+    pub fn buf_unlist(&mut self, target: Id) -> Option<Id> {
+        let target_idx = self.buffer_list.iter().position(|x| *x == target)?;
+        self.buffer_list.remove(target_idx);
+
+        let Some(active_idx) = self.active else {
+            return Some(target);
+        };
+        if active_idx < target_idx {
+            return Some(target);
         };
 
-        self.buffers.remove(index);
-
-        // check shift left
-        let last_active = if let Some(active) = self.active {
-            if active >= index {
-                active
-            } else {
-                return;
-            }
-        } else {
-            // no active buffer
-            return;
-        };
-
-        if last_active > 0 {
-            self.active = Some(last_active - 1);
+        if active_idx > 0 {
+            self.active = Some(active_idx - 1)
         } else {
             if self.buffers.len() > 0 {
                 self.active = Some(0)
@@ -65,45 +76,68 @@ impl Store {
                 self.active = None
             }
         }
+
+        Some(target)
     }
 
-    pub fn activate(&mut self, index: usize) {
-        if let Some(_) = self.buffers.get(index) {
-            self.active = Some(index)
-        }
+    pub fn buf_remove(&mut self, id: Id) -> Option<()> {
+        let Some(_) = self.buffers.remove(&id) else {
+            return None;
+        };
+        self.buf_unlist(id);
+        return Some(());
     }
 
-    pub fn activate_with_lsp(&mut self, index: usize, lsp: lsp::Id) {
-        if let Some(buf) = self.buffers.get_mut(index) {
-            buf.register_lsp(lsp);
-            self.active = Some(index)
-        }
+    pub fn activate(&mut self, id: Id) -> Option<usize> {
+        let idx = self.position(id)?;
+        self.active = Some(idx);
+        Some(idx)
     }
 
-    pub fn active(&self) -> Option<usize> {
+    pub fn activate_with_lsp(&mut self, id: Id, lsp: lsp::Id) -> Option<usize> {
+        let buf = self.buffers.get_mut(&id)?;
+        buf.register_lsp(lsp);
+        Some(self.activate(id).unwrap())
+    }
+
+    pub fn active_idx(&self) -> Option<usize> {
         self.active
     }
 
-    pub fn buf_mut(&mut self, index: usize) -> Option<&mut Buffer> {
-        self.buffers.get_mut(index)
+    pub fn active(&self) -> Option<Id> {
+        let idx = self.active?;
+        Some(self.id(idx).unwrap().clone())
     }
 
-    pub fn buf(&self, index: usize) -> Option<&Buffer> {
-        self.buffers.get(index)
+    pub fn buf_mut(&mut self, id: Id) -> Option<&mut Buffer> {
+        self.buffers.get_mut(&id)
     }
 
-    pub fn buffers(&self) -> &Vec<Buffer> {
-        &self.buffers
+    pub fn buf(&self, id: Id) -> Option<&Buffer> {
+        self.buffers.get(&id)
     }
 
-    pub fn position(&self, path: PathBuf) -> Option<usize> {
-        self.buffers.iter().position(|x| {
-            if let Some(x_path) = &x.file_path {
-                x_path == &path
-            } else {
-                false
-            }
-        })
+    pub fn buffer_list(&self) -> &Vec<Id> {
+        &self.buffer_list
+    }
+
+    pub fn id_from_path(&self, target: &PathBuf) -> Option<Id> {
+        self.buffers
+            .iter()
+            .find(|(_, buf)| {
+                let Some(path) = &buf.file_path else {
+                    return false;
+                };
+                path == target
+            })
+            .map(|(id, _)| *id)
+    }
+
+    pub fn position(&self, id: Id) -> Option<usize> {
+        self.buffer_list.iter().position(|x| *x == id)
+    }
+    pub fn id(&self, pos: usize) -> Option<&Id> {
+        self.buffer_list.get(pos)
     }
 }
 
@@ -221,16 +255,17 @@ impl Buffer {
         self.editor.write().unwrap().set_redraw(true);
     }
 
-    pub fn get_name(&self) -> String {
-        if let Some(path) = &self.file_path {
+    pub fn get_name(&self) -> Option<String> {
+        let Some(path) = &self.file_path else {
+            return None;
+        };
+        Some(
             path.file_name()
                 .expect("invalid file name")
                 .to_str()
                 .expect("could not parse to string")
-                .to_owned()
-        } else {
-            "New Tab".into()
-        }
+                .to_owned(),
+        )
     }
 
     fn set_config(&mut self) {

@@ -9,7 +9,7 @@ use iced::Task;
 
 // TODO move Message back to main, should not be here
 use crate::{
-    Message,
+    Message, buffer,
     lsp::{self},
 };
 
@@ -42,6 +42,7 @@ impl ServerState {
 pub struct Store {
     workspace: Option<PathBuf>,
 
+    registered_buffers: Vec<buffer::Id>,
     pub language_servers: HashMap<Id, ServerState>,
     languages: HashMap<String, Id>,
 }
@@ -52,6 +53,7 @@ impl Store {
             workspace: None,
             language_servers: HashMap::new(),
             languages: HashMap::new(),
+            registered_buffers: Vec::new(),
         }
     }
 

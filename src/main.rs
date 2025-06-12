@@ -53,8 +53,8 @@ enum Message {
     OpenDirectorySelector,
     OpenFile(PathBuf),
     OpenProject(PathBuf),
-    BufferSelected(usize),
-    BufferClose(usize),
+    BufferSelectedIdx(usize),
+    BufferCloseIdx(usize),
     BufferCloseCurrent,
     BufferSearch(String),
     BufferSearchOpen,
@@ -170,8 +170,10 @@ impl App {
                     self.open_project(dir_path);
                 }
             }
-            Message::BufferSelected(buf) => {
-                self.buffers.activate(buf);
+            Message::BufferSelectedIdx(index) => {
+                if let Some(id) = self.buffers.id(index) {
+                    self.buffers.activate(*id);
+                }
                 self.redraw_active_editor();
             }
             Message::OpenProject(project) => {
@@ -189,12 +191,14 @@ impl App {
             }
             Message::BufferCloseCurrent => {
                 if let Some(active) = self.buffers.active() {
-                    self.buffers.remove(active);
+                    self.buffers.buf_remove(active);
                     self.redraw_active_editor();
                 }
             }
-            Message::BufferClose(buf) => {
-                self.buffers.remove(buf);
+            Message::BufferCloseIdx(index) => {
+                if let Some(id) = self.buffers.id(index) {
+                    self.buffers.buf_remove(*id);
+                }
                 self.redraw_active_editor();
             }
             Message::BufferSearch(text) => {
@@ -347,18 +351,27 @@ impl App {
 
                 let mut tab_bar = self
                     .buffers
-                    .buffers()
+                    .buffer_list()
                     .iter()
-                    .fold(TabBar::new(Message::BufferSelected), |tab_bar, tab| {
-                        let idx = tab_bar.size();
-                        tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
-                    })
-                    .on_close(Message::BufferClose)
+                    .enumerate()
+                    .fold(
+                        TabBar::new(Message::BufferSelectedIdx),
+                        |tab_bar, (index, tab)| {
+                            let name = self
+                                .buffers
+                                .buf(*tab)
+                                .unwrap()
+                                .get_name()
+                                .unwrap_or("New Tab".to_string());
+                            tab_bar.push(index, iced_aw::TabLabel::Text(name))
+                        },
+                    )
+                    .on_close(Message::BufferCloseIdx)
                     .width(Length::Shrink)
                     .tab_width(Length::Shrink);
 
-                if let Some(active) = self.buffers.active() {
-                    tab_bar = tab_bar.set_active_tab(&active);
+                if let Some(idx) = self.buffers.active_idx() {
+                    tab_bar = tab_bar.set_active_tab(&idx);
                 }
 
                 pane_grid::Content::new(
@@ -461,15 +474,15 @@ impl App {
 
     fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize"); // methods beginning with 'open' should canonicalize
-        if let Some(pos) = self.buffers.position(file_path.clone()) {
+        if let Some(pos) = self.buffers.id_from_path(&file_path) {
             self.buffers.activate(pos);
             self.redraw_active_editor();
             return Ok(Task::none());
         }
-        let index = self.buffers.insert(Some(file_path.clone()))?;
+        let buf_id = self.buffers.insert(Some(file_path.clone()))?;
 
-        let id = self.language_servers.get_or_init_lsp("rust".to_string());
-        self.buffers.activate_with_lsp(index, id);
+        let lsp_id = self.language_servers.get_or_init_lsp("rust".to_string());
+        self.buffers.activate_with_lsp(buf_id, lsp_id);
         self.redraw_active_editor();
 
         let pending_tasks: Task<Message> = self
