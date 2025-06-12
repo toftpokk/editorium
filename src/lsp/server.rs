@@ -75,8 +75,23 @@ impl Server {
                         } else {
                             "no server info".to_string()
                         };
-                        log::info!("Connected: {}", log_string);
                         self.server_options = Some(response);
+                        log::info!("Connected: {}", log_string);
+
+                        let req = Self::initialized();
+                        let writer = self.new_writer();
+                        return iced::Task::perform(
+                            async move { writer.write(req.as_message()).await },
+                            |x| {
+                                match x {
+                                    Ok(..) => {}
+                                    Err(err) => {
+                                        log::error!("{:?}", err)
+                                    }
+                                }
+                                Message::None
+                            },
+                        );
                     }
                     _ => log::warn!(
                         "response unknown previous method {}: {:?}",
