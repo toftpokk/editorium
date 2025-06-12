@@ -42,7 +42,8 @@ impl ServerState {
 
 pub struct Store {
     workspace: Option<PathBuf>,
-    pub servers: HashMap<Id, ServerState>,
+
+    pub language_servers: HashMap<Id, ServerState>,
     languages: HashMap<String, Id>,
 }
 
@@ -50,7 +51,7 @@ impl Store {
     pub fn new() -> Self {
         Self {
             workspace: None,
-            servers: HashMap::new(),
+            language_servers: HashMap::new(),
             languages: HashMap::new(),
         }
     }
@@ -60,7 +61,7 @@ impl Store {
     }
 
     pub fn on_message(&mut self, id: Id, message: lsp::Message) {
-        let entry = match self.servers.get_mut(&id) {
+        let entry = match self.language_servers.get_mut(&id) {
             Some(entry) => entry,
             None => {
                 log::warn!("message unknown server: {} {:?}", id, message);
@@ -73,8 +74,9 @@ impl Store {
                 server.on_message(message);
                 if server.initialized {
                     // FIXME feels hacky
-                    let (id, server_state) = self.servers.remove_entry(&id).unwrap();
-                    self.servers.insert(id, server_state.set_state_running());
+                    let (id, server_state) = self.language_servers.remove_entry(&id).unwrap();
+                    self.language_servers
+                        .insert(id, server_state.set_state_running());
                 }
             }
             ServerState::Running(server) => {
@@ -93,7 +95,7 @@ impl Store {
         let fut = async move { writer.write(req.as_message()).await };
 
         let id = Id(ID_COUNTER.fetch_add(1, Ordering::SeqCst));
-        self.servers.insert(
+        self.language_servers.insert(
             id,
             lsp::store::ServerState::Starting(
                 server,

@@ -364,7 +364,7 @@ impl App {
         // per-server reading tasks
         let mut workers: Vec<_> = self
             .lsp_store
-            .servers
+            .language_servers
             .iter()
             .enumerate()
             .map(|(_, (id, state))| match state {
@@ -423,7 +423,7 @@ impl App {
 
         let pending_tasks: Task<Message> = self
             .lsp_store
-            .servers
+            .language_servers
             .iter_mut()
             .filter_map(|x| match x.1 {
                 lsp::ServerState::Starting(_, task) => task.take(),
