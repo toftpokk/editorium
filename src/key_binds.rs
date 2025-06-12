@@ -26,35 +26,35 @@ pub fn default() -> HashMap<KeyBind, Message> {
             modifiers: Modifiers::CTRL,
             key: Key::Character("w".into()),
         },
-        Message::TabCloseCurrent,
+        Message::BufferCloseCurrent,
     );
     key_bind.insert(
         KeyBind {
             modifiers: Modifiers::ALT,
             key: Key::Character("1".into()),
         },
-        Message::TabSelected(0),
+        Message::BufferSelected(0),
     );
     key_bind.insert(
         KeyBind {
             modifiers: Modifiers::ALT,
             key: Key::Character("2".into()),
         },
-        Message::TabSelected(1),
+        Message::BufferSelected(1),
     );
     key_bind.insert(
         KeyBind {
             modifiers: Modifiers::ALT,
             key: Key::Character("3".into()),
         },
-        Message::TabSelected(2),
+        Message::BufferSelected(2),
     );
     key_bind.insert(
         KeyBind {
             modifiers: Modifiers::CTRL,
             key: Key::Character("f".into()),
         },
-        Message::TabSearchOpen,
+        Message::BufferSearchOpen,
     );
 
     key_bind

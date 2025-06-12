@@ -447,7 +447,7 @@ where
                     // if binding exists, assume captured
                     match binding {
                         Binding::Escape => {
-                            shell.publish(Message::TabSearchClose);
+                            shell.publish(Message::BufferSearchClose);
                         }
                         Binding::Enter => {
                             self.start_new_change(&mut editor, state);

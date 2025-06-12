@@ -49,12 +49,12 @@ enum Message {
     OpenDirectorySelector,
     OpenFile(PathBuf),
     OpenProject(PathBuf),
-    TabSelected(usize),
-    TabClose(usize),
-    TabCloseCurrent,
-    TabSearch(String),
-    TabSearchOpen,
-    TabSearchClose,
+    BufferSelected(usize),
+    BufferClose(usize),
+    BufferCloseCurrent,
+    BufferSearch(String),
+    BufferSearchOpen,
+    BufferSearchClose,
     PaneResized(pane_grid::ResizeEvent),
     ProjectTreeSelect(usize),
     SaveFile,
@@ -166,8 +166,8 @@ impl App {
                     self.open_project(dir_path);
                 }
             }
-            Message::TabSelected(tab) => {
-                self.buffers.activate(tab);
+            Message::BufferSelected(buf) => {
+                self.buffers.activate(buf);
                 self.redraw_active_editor();
             }
             Message::OpenProject(project) => {
@@ -176,39 +176,39 @@ impl App {
             Message::OpenFile(file_path) => return self.open_file(file_path).unwrap(),
             Message::SaveFile => {
                 if let Some(active) = self.buffers.active() {
-                    let tab = self.buffers.buf_mut(active).unwrap();
-                    match tab.save() {
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    match buf.save() {
                         Ok(_) => {}
                         Err(err) => log::error!("could not open directory: {}", err),
                     }
                 };
             }
-            Message::TabCloseCurrent => {
+            Message::BufferCloseCurrent => {
                 if let Some(active) = self.buffers.active() {
                     self.buffers.remove(active);
                     self.redraw_active_editor();
                 }
             }
-            Message::TabClose(tab) => {
-                self.buffers.remove(tab);
+            Message::BufferClose(buf) => {
+                self.buffers.remove(buf);
                 self.redraw_active_editor();
             }
-            Message::TabSearch(text) => {
+            Message::BufferSearch(text) => {
                 if let Some(active) = self.buffers.active() {
-                    let tab = self.buffers.buf_mut(active).unwrap();
-                    return tab.search_open(Some(text));
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    return buf.search_open(Some(text));
                 }
             }
-            Message::TabSearchOpen => {
+            Message::BufferSearchOpen => {
                 if let Some(active) = self.buffers.active() {
-                    let tab = self.buffers.buf_mut(active).unwrap();
-                    return tab.search_open(None);
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    return buf.search_open(None);
                 }
             }
-            Message::TabSearchClose => {
+            Message::BufferSearchClose => {
                 if let Some(active) = self.buffers.active() {
-                    let tab = self.buffers.buf_mut(active).unwrap();
-                    return tab.search_close();
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    return buf.search_close();
                 }
             }
             Message::KeyPressed(modifier, key) => {
@@ -256,9 +256,9 @@ impl App {
             Message::AutoScroll => {
                 if let Some(auto_scroll) = self.auto_scroll {
                     if let Some(active) = self.buffers.active() {
-                        let tab = self.buffers.buf_mut(active).unwrap();
+                        let buf = self.buffers.buf_mut(active).unwrap();
 
-                        tab.scroll(auto_scroll)
+                        buf.scroll(auto_scroll)
                     }
                 }
             }
@@ -445,8 +445,8 @@ impl App {
 
     fn redraw_active_editor(&mut self) {
         if let Some(active) = self.buffers.active() {
-            let tab = self.buffers.buf_mut(active).unwrap();
-            tab.redraw();
+            let buf = self.buffers.buf_mut(active).unwrap();
+            buf.redraw();
         }
     }
 

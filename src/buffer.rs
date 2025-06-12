@@ -111,11 +111,11 @@ impl Store {
         let mut tab_bar = self
             .buffers
             .iter()
-            .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
+            .fold(TabBar::new(Message::BufferSelected), |tab_bar, tab| {
                 let idx = tab_bar.size();
                 tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
             })
-            .on_close(Message::TabClose)
+            .on_close(Message::BufferClose)
             .width(Length::Shrink)
             .tab_width(Length::Shrink);
 
@@ -248,7 +248,7 @@ impl Buffer {
         if self.search_open {
             col = col.push(
                 text_input("Find Something...", &self.search.text)
-                    .on_input(Message::TabSearch)
+                    .on_input(Message::BufferSearch)
                     .id(self.search.id.clone()),
             )
         }
