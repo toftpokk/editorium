@@ -8,6 +8,7 @@ use std::{
 };
 
 use clap::Parser;
+use cosmic_text::Edit;
 use iced::{
     Element, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
@@ -273,7 +274,9 @@ impl App {
             Message::SetAutoScroll(auto_scroll) => {
                 self.auto_scroll = auto_scroll;
             }
-            Message::LSPMessage(id, msg) => self.language_servers.on_message(id, msg),
+            Message::LSPMessage(id, msg) => {
+                return self.language_servers.on_message(id, msg);
+            }
             Message::Error(err) => {
                 log::error!("{}", err)
             }
@@ -437,7 +440,7 @@ impl App {
                     server.new_reader(),
                     server.new_reader_error(),
                 )],
-                lsp::ServerState::Starting(server, _) => {
+                lsp::ServerState::Starting(server, ..) => {
                     vec![lsp_worker(
                         id.clone(),
                         server.new_reader(),
@@ -483,7 +486,28 @@ impl App {
         self.buffers.activate(buf_id);
 
         self.language_servers.get_or_init_lsp("rust".to_string());
-        self.language_servers.register_buffer(buf_id);
+        let mut text = String::new();
+        self.buffers
+            .buf(buf_id)
+            .unwrap()
+            .editor
+            .read()
+            .unwrap()
+            .with_buffer(|buf| {
+                for line in buf.lines.iter() {
+                    text.push_str(line.text());
+                    text.push_str(line.ending().as_str());
+                }
+            });
+        self.language_servers.register_buffer(
+            buf_id,
+            lsp::BufferSnapshot::new(
+                0,
+                url::Url::from_file_path(file_path.as_path()).unwrap(),
+                "rust".to_string(),
+                text,
+            ),
+        );
         self.redraw_active_editor();
 
         let pending_tasks: Task<Message> = self
@@ -491,7 +515,7 @@ impl App {
             .servers
             .iter_mut()
             .filter_map(|x| match x.1 {
-                lsp::ServerState::Starting(_, task) => task.take(),
+                lsp::ServerState::Starting(.., task) => task.take(),
                 lsp::ServerState::Running(..) => None,
             })
             .fold(Task::none(), |task, x| task.chain(x));

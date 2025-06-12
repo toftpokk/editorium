@@ -79,6 +79,19 @@ impl Message {
     }
 }
 
+impl From<Response> for Message {
+    fn from(value: Response) -> Self {
+        Self {
+            jsonrpc: Default::default(),
+            id: Some(value.id),
+            method: None,
+            params: None,
+            result: value.result,
+            error: value.error,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Request {
     jsonrpc: String,

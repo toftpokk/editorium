@@ -7,7 +7,7 @@ use smol::{
 };
 use std::{self, str::FromStr};
 
-use crate::lsp::jsonrpc;
+use crate::{Message, lsp::jsonrpc};
 
 pub struct Server {
     pub initialized: bool,
@@ -53,7 +53,7 @@ impl Server {
         }
     }
 
-    pub fn on_message(&mut self, raw_message: jsonrpc::Message) {
+    pub fn on_message(&mut self, raw_message: jsonrpc::Message) -> iced::Task<Message> {
         if let Some(response) = raw_message.clone().as_response() {
             // TODO buffer request. Assuming response to last request. Ignoring message ID
             if let Some(method) = &self.last_message {
@@ -90,6 +90,7 @@ impl Server {
         } else {
             log::warn!("response to rpc message: {:?}", raw_message)
         }
+        iced::Task::none()
     }
 
     pub fn initialize(&mut self) -> jsonrpc::Request {
@@ -108,12 +109,16 @@ impl Server {
         req
     }
 
+    pub fn initialized() -> jsonrpc::Notification {
+        jsonrpc::Notification::new(lsp_types::notification::Initialized::METHOD, None)
+    }
+
     pub fn text_document_did_open(
         file: url::Url,
         language_id: String,
         version: i32,
         text: &str,
-    ) -> jsonrpc::Message {
+    ) -> jsonrpc::Notification {
         let params = lsp_types::DidOpenTextDocumentParams {
             text_document: lsp_types::TextDocumentItem {
                 uri: lsp_types::Uri::from_str(file.as_str()).unwrap(),
@@ -128,7 +133,7 @@ impl Server {
             Some(serde_json::to_value(params).unwrap()),
         );
 
-        req.as_message()
+        req
     }
 
     pub fn new_writer(&self) -> Writer {
