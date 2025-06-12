@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::RwLock;
 use std::{fs, io};
 
-use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
+use cosmic_text::{Attrs, Edit, Metrics, SyntaxEditor, SyntaxSystem};
 use iced::advanced::widget::operate;
 use iced::widget::{self, Column, Scrollable, scrollable, text_input};
 use iced::{Element, Length, Task, advanced};
@@ -13,37 +13,37 @@ use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, lsp, text_box, theme};
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
 
-pub struct TabView {
+pub struct Store {
     active: Option<usize>,
-    tabs: Vec<Tab>,
+    buffers: Vec<Buffer>,
 }
 
-impl TabView {
+impl Store {
     pub fn new() -> Self {
         Self {
             active: None,
-            tabs: Vec::new(),
+            buffers: Vec::new(),
         }
     }
 
     pub fn insert(&mut self, path: Option<PathBuf>) -> io::Result<usize> {
-        let mut tab = Tab::new();
+        let mut buf = Buffer::new();
         if let Some(path) = path {
-            tab.open_file(path)?;
+            buf.open_file(path)?;
         }
-        self.tabs.push(tab);
-        Ok(self.tabs.len() - 1)
+        self.buffers.push(buf);
+        Ok(self.buffers.len() - 1)
     }
 
     pub fn remove(&mut self, index: usize) {
-        // check tab exists
-        if let Some(tab) = self.tabs.get(index) {
-            tab
+        // check buf exists
+        if let Some(buf) = self.buffers.get(index) {
+            buf
         } else {
             return;
         };
 
-        self.tabs.remove(index);
+        self.buffers.remove(index);
 
         // check shift left
         let last_active = if let Some(active) = self.active {
@@ -53,14 +53,14 @@ impl TabView {
                 return;
             }
         } else {
-            // no active tab
+            // no active buffer
             return;
         };
 
         if last_active > 0 {
             self.active = Some(last_active - 1);
         } else {
-            if self.tabs.len() > 0 {
+            if self.buffers.len() > 0 {
                 self.active = Some(0)
             } else {
                 self.active = None
@@ -69,14 +69,14 @@ impl TabView {
     }
 
     pub fn activate(&mut self, index: usize) {
-        if let Some(_) = self.tabs.get(index) {
+        if let Some(_) = self.buffers.get(index) {
             self.active = Some(index)
         }
     }
 
     pub fn activate_with_lsp(&mut self, index: usize, lsp: lsp::Id) {
-        if let Some(tab) = self.tabs.get_mut(index) {
-            tab.register_lsp(lsp);
+        if let Some(buf) = self.buffers.get_mut(index) {
+            buf.register_lsp(lsp);
             self.active = Some(index)
         }
     }
@@ -85,12 +85,12 @@ impl TabView {
         self.active
     }
 
-    pub fn tab_mut(&mut self, index: usize) -> Option<&mut Tab> {
-        self.tabs.get_mut(index)
+    pub fn buf_mut(&mut self, index: usize) -> Option<&mut Buffer> {
+        self.buffers.get_mut(index)
     }
 
     pub fn position(&self, path: PathBuf) -> Option<usize> {
-        self.tabs.iter().position(|x| {
+        self.buffers.iter().position(|x| {
             if let Some(x_path) = &x.file_path {
                 x_path == &path
             } else {
@@ -101,15 +101,15 @@ impl TabView {
 
     pub fn view(&self) -> Element<Message, theme::MyTheme> {
         let main = if let Some(active) = self.active {
-            let tab = self.tabs.get(active).unwrap();
-            tab.view()
+            let buf = self.buffers.get(active).unwrap();
+            buf.view()
         } else {
             // scrollable(Row::new())
             Column::new()
         };
 
         let mut tab_bar = self
-            .tabs
+            .buffers
             .iter()
             .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
                 let idx = tab_bar.size();
@@ -142,7 +142,7 @@ pub struct Search {
     text: String,
 }
 
-pub struct Tab {
+pub struct Buffer {
     pub file_path: Option<PathBuf>,
 
     editor: RwLock<SyntaxEditor<'static, 'static>>, // RwLock allows writing during draw
@@ -154,15 +154,16 @@ pub struct Tab {
     lsp: Option<lsp::Id>,
 }
 
-impl Tab {
+impl Buffer {
     fn new() -> Self {
         let metrics = Metrics::new(14.0, 20.0);
-        let buffer = Buffer::new_empty(metrics);
+        let buffer_inner = cosmic_text::Buffer::new_empty(metrics);
         let attrs = Attrs::new().family(cosmic_text::Family::Monospace);
         let syntax_system: &SyntaxSystem = SYNTAX_SYSTEM.get().unwrap();
-        let editor = SyntaxEditor::new(buffer, &syntax_system, "base16-eighties.dark").unwrap();
+        let editor =
+            SyntaxEditor::new(buffer_inner, &syntax_system, "base16-eighties.dark").unwrap();
 
-        let mut tab = Self {
+        let mut buf = Self {
             file_path: None,
             editor: RwLock::new(editor),
             attrs,
@@ -175,9 +176,9 @@ impl Tab {
             text_box_id: advanced::widget::Id::unique(),
             lsp: None,
         };
-        tab.set_config();
+        buf.set_config();
 
-        tab
+        buf
     }
 
     pub fn register_lsp(&mut self, id: lsp::Id) {

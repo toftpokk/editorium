@@ -19,12 +19,12 @@ use iced::{
 use key_binds::KeyBind;
 use rfd::FileDialog;
 
+mod buffer;
 mod cli;
 mod font;
 mod key_binds;
 mod lsp;
 mod project;
-mod tab;
 mod text_box;
 mod theme;
 
@@ -102,12 +102,12 @@ impl Pane {
 }
 
 struct App {
-    tabs: tab::TabView,
+    buffers: buffer::Store,
     project_tree: project::ProjectTree,
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
-    lsp_store: lsp::Store,
+    language_servers: lsp::Store,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -129,12 +129,12 @@ impl App {
         KEY_BINDINGS.get_or_init(|| key_binds::default());
 
         let mut app = Self {
-            tabs: tab::TabView::new(),
+            buffers: buffer::Store::new(),
             project_tree: project::ProjectTree::new(),
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
-            lsp_store: lsp::Store::new(),
+            language_servers: lsp::Store::new(),
         };
 
         let task = if let Some(path) = cli.path {
@@ -167,7 +167,7 @@ impl App {
                 }
             }
             Message::TabSelected(tab) => {
-                self.tabs.activate(tab);
+                self.buffers.activate(tab);
                 self.redraw_active_editor();
             }
             Message::OpenProject(project) => {
@@ -175,8 +175,8 @@ impl App {
             }
             Message::OpenFile(file_path) => return self.open_file(file_path).unwrap(),
             Message::SaveFile => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
+                if let Some(active) = self.buffers.active() {
+                    let tab = self.buffers.buf_mut(active).unwrap();
                     match tab.save() {
                         Ok(_) => {}
                         Err(err) => log::error!("could not open directory: {}", err),
@@ -184,30 +184,30 @@ impl App {
                 };
             }
             Message::TabCloseCurrent => {
-                if let Some(active) = self.tabs.active() {
-                    self.tabs.remove(active);
+                if let Some(active) = self.buffers.active() {
+                    self.buffers.remove(active);
                     self.redraw_active_editor();
                 }
             }
             Message::TabClose(tab) => {
-                self.tabs.remove(tab);
+                self.buffers.remove(tab);
                 self.redraw_active_editor();
             }
             Message::TabSearch(text) => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
+                if let Some(active) = self.buffers.active() {
+                    let tab = self.buffers.buf_mut(active).unwrap();
                     return tab.search_open(Some(text));
                 }
             }
             Message::TabSearchOpen => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
+                if let Some(active) = self.buffers.active() {
+                    let tab = self.buffers.buf_mut(active).unwrap();
                     return tab.search_open(None);
                 }
             }
             Message::TabSearchClose => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
+                if let Some(active) = self.buffers.active() {
+                    let tab = self.buffers.buf_mut(active).unwrap();
                     return tab.search_close();
                 }
             }
@@ -255,8 +255,8 @@ impl App {
             }
             Message::AutoScroll => {
                 if let Some(auto_scroll) = self.auto_scroll {
-                    if let Some(active) = self.tabs.active() {
-                        let tab = self.tabs.tab_mut(active).unwrap();
+                    if let Some(active) = self.buffers.active() {
+                        let tab = self.buffers.buf_mut(active).unwrap();
 
                         tab.scroll(auto_scroll)
                     }
@@ -265,7 +265,7 @@ impl App {
             Message::SetAutoScroll(auto_scroll) => {
                 self.auto_scroll = auto_scroll;
             }
-            Message::LSPMessage(id, msg) => self.lsp_store.on_message(id, msg),
+            Message::LSPMessage(id, msg) => self.language_servers.on_message(id, msg),
             Message::Error(err) => {
                 log::error!("{}", err)
             }
@@ -321,7 +321,7 @@ impl App {
 
         let pane_grid = PaneGrid::new(&self.panes, |_, state, _| {
             if state.pane_type == PaneType::Editor {
-                pane_grid::Content::new(self.tabs.view())
+                pane_grid::Content::new(self.buffers.view())
             } else {
                 let file_tree = self.project_tree.view();
 
@@ -363,7 +363,7 @@ impl App {
 
         // per-server reading tasks
         let mut workers: Vec<_> = self
-            .lsp_store
+            .language_servers
             .language_servers
             .iter()
             .enumerate()
@@ -410,19 +410,19 @@ impl App {
 
     fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
         let file_path = fs::canonicalize(&file_path).expect("could not canonicalize"); // methods beginning with 'open' should canonicalize
-        if let Some(pos) = self.tabs.position(file_path.clone()) {
-            self.tabs.activate(pos);
+        if let Some(pos) = self.buffers.position(file_path.clone()) {
+            self.buffers.activate(pos);
             self.redraw_active_editor();
             return Ok(Task::none());
         }
-        let index = self.tabs.insert(Some(file_path.clone()))?;
+        let index = self.buffers.insert(Some(file_path.clone()))?;
 
-        let id = self.lsp_store.get_or_init_lsp("rust".to_string());
-        self.tabs.activate_with_lsp(index, id);
+        let id = self.language_servers.get_or_init_lsp("rust".to_string());
+        self.buffers.activate_with_lsp(index, id);
         self.redraw_active_editor();
 
         let pending_tasks: Task<Message> = self
-            .lsp_store
+            .language_servers
             .language_servers
             .iter_mut()
             .filter_map(|x| match x.1 {
@@ -444,8 +444,8 @@ impl App {
     }
 
     fn redraw_active_editor(&mut self) {
-        if let Some(active) = self.tabs.active() {
-            let tab = self.tabs.tab_mut(active).unwrap();
+        if let Some(active) = self.buffers.active() {
+            let tab = self.buffers.buf_mut(active).unwrap();
             tab.redraw();
         }
     }
