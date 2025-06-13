@@ -115,6 +115,32 @@ impl From<Response> for Message {
     }
 }
 
+impl From<Notification> for Message {
+    fn from(value: Notification) -> Self {
+        Self {
+            jsonrpc: value.jsonrpc,
+            id: None,
+            method: Some(value.method),
+            params: value.params,
+            result: None,
+            error: None,
+        }
+    }
+}
+
+impl From<Request> for Message {
+    fn from(value: Request) -> Self {
+        Self {
+            jsonrpc: value.jsonrpc,
+            id: Some(value.id),
+            method: Some(value.method),
+            params: value.params,
+            result: None,
+            error: None,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Request {
     jsonrpc: String,
@@ -149,21 +175,6 @@ impl Request {
             id: serde_json::to_value(id).unwrap(),
         }
     }
-
-    pub fn to_string(self) -> String {
-        serde_json::to_string(&self).unwrap()
-    }
-
-    pub fn as_message(self) -> Message {
-        Message {
-            jsonrpc: self.jsonrpc,
-            id: Some(self.id),
-            method: Some(self.method),
-            params: self.params,
-            result: None,
-            error: None,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -193,17 +204,6 @@ impl Notification {
             params,
         }
     }
-
-    pub fn as_message(self) -> Message {
-        Message {
-            jsonrpc: self.jsonrpc,
-            id: None,
-            method: Some(self.method),
-            params: self.params,
-            result: None,
-            error: None,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -215,12 +215,6 @@ pub struct Response {
     pub id: Value,
 }
 
-impl From<String> for Response {
-    fn from(value: String) -> Self {
-        serde_json::from_str(&value).unwrap()
-    }
-}
-
 impl Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(error) = &self.error {
@@ -230,5 +224,11 @@ impl Display for Response {
         } else {
             write!(f, "Response: for {}", self.id)
         }
+    }
+}
+
+impl Response {
+    pub fn new(id: Value, result: Option<Value>, error: Option<Value>) -> Self {
+        Self { id, error, result }
     }
 }

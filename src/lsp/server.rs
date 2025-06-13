@@ -78,7 +78,7 @@ impl Server {
                         self.server_options = Some(response);
                         log::info!("Connected: {}", log_string);
 
-                        Self::initialized().as_message()
+                        Self::initialized().into()
                     }
                     _ => {
                         log::warn!("response unknown previous method {}:\n{}", method, response);

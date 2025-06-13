@@ -117,7 +117,7 @@ impl Store {
                         let t = Task::perform(
                             async move {
                                 for req in requests {
-                                    match writer.write(req.as_message()).await {
+                                    match writer.write(req.into()).await {
                                         Ok(_) => {}
                                         Err(err) => log::error!("{:?}", err),
                                     }
@@ -151,7 +151,7 @@ impl Store {
         let req = server.initialize();
         let req_id = req.id.as_u64().unwrap();
         let writer = server.new_writer();
-        let fut = async move { writer.write(req.as_message()).await };
+        let fut = async move { writer.write(req.into()).await };
 
         let id = Id(ID_COUNTER.fetch_add(1, Ordering::SeqCst));
         self.servers.insert(
