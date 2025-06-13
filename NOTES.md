@@ -18,3 +18,16 @@
 - Event Ignored -> app.subscription -> Message
 
 - Timed app.subscription -> Message
+
+## How nvim detects file encodings
+https://github.com/neovim/neovim/blob/8b9500c886bdb72620e331d430e166ad7d9c12f8/src/nvim/fileio.c#L162
+- TLDR:
+  - default set of file encodings to try:
+    - ucs-bom, utf-8, latin1
+  - check decode each one, if all fails, use utf-8
+- from trial and error
+  - text is written in utf-8, then use iconv to convert to final encoding
+  - if cannot convert, error
+- uchardet
+  - software to detect character encoding using frequency analysis
+  - returns most likely encoding, and confidence level
