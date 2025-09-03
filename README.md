@@ -12,3 +12,6 @@ A code editor for learning purposes
 - pop-os/cosmic-edit
 - iced text_editor
 - squidowl/halloy
+- zed-industries/zed
+- neovim/neovim
+- AndCake/micro-plugin-lsp

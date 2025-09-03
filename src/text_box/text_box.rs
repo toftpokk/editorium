@@ -379,7 +379,7 @@ where
 
             renderer.draw_image(image, bounds);
         }
-        log::info!("draw time: {:02?}", time_draw.elapsed());
+        log::debug!("draw time: {:02?}", time_draw.elapsed());
 
         // --- POC: font rendering with iced_font ----
         // Verdict: not possible because it renders once for all text, cannot use
@@ -447,7 +447,7 @@ where
                     // if binding exists, assume captured
                     match binding {
                         Binding::Escape => {
-                            shell.publish(Message::TabSearchClose);
+                            shell.publish(Message::BufferSearchClose);
                         }
                         Binding::Enter => {
                             self.start_new_change(&mut editor, state);

@@ -1,27 +1,35 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    fs,
+    fs, io,
     path::PathBuf,
     str::FromStr,
     sync::{OnceLock, RwLock},
 };
 
 use clap::Parser;
+use cosmic_text::Edit;
 use iced::{
     Element, Length, Subscription, Task,
     advanced::graphics::core::keyboard,
-    event, time,
-    widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
+    event,
+    futures::{self, SinkExt},
+    stream, time,
+    widget::{
+        Column, Container, PaneGrid, Scrollable, button, column, pane_grid, pick_list, row,
+        scrollable, text_input,
+    },
 };
+use iced_aw::TabBar;
 use key_binds::KeyBind;
 use rfd::FileDialog;
 
+mod buffer;
 mod cli;
 mod font;
 mod key_binds;
+mod lsp;
 mod project;
-mod tab;
 mod text_box;
 mod theme;
 
@@ -46,17 +54,20 @@ enum Message {
     OpenDirectorySelector,
     OpenFile(PathBuf),
     OpenProject(PathBuf),
-    TabSelected(usize),
-    TabClose(usize),
-    TabCloseCurrent,
-    TabSearch(String),
-    TabSearchOpen,
-    TabSearchClose,
+    BufferSelectedIdx(usize),
+    BufferCloseIdx(usize),
+    BufferCloseCurrent,
+    BufferSearch(String),
+    BufferSearchOpen,
+    BufferSearchClose,
     PaneResized(pane_grid::ResizeEvent),
     ProjectTreeSelect(usize),
     SaveFile,
     AutoScroll,
     SetAutoScroll(Option<f32>),
+    Error(String),
+    LSPMessage(lsp::Id, lsp::Message),
+    None,
 }
 
 fn main() -> Result<(), iced::Error> {
@@ -96,11 +107,12 @@ impl Pane {
 }
 
 struct App {
-    tabs: tab::TabView,
+    buffers: buffer::Store,
     project_tree: project::ProjectTree,
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
+    language_servers: lsp::Store,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -122,22 +134,25 @@ impl App {
         KEY_BINDINGS.get_or_init(|| key_binds::default());
 
         let mut app = Self {
-            tabs: tab::TabView::new(),
+            buffers: buffer::Store::new(),
             project_tree: project::ProjectTree::new(),
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
+            language_servers: lsp::Store::new(),
         };
 
-        if let Some(path) = cli.path {
+        let task = if let Some(path) = cli.path {
             if path.is_dir() {
-                app.open_project(path);
+                Task::done(Message::OpenProject(path))
             } else {
-                app.open_file(path);
+                Task::done(Message::OpenFile(path))
             }
-        }
+        } else {
+            Task::none()
+        };
 
-        (app, Task::none())
+        (app, task)
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -146,57 +161,63 @@ impl App {
                 if let Some(file_path) =
                     select_file(&self.current_project.as_ref().map(|p| p.path.clone()))
                 {
-                    self.open_file(file_path)
+                    return self.open_file(file_path).unwrap();
                 }
             }
             Message::OpenDirectorySelector => {
                 if let Some(dir_path) =
                     select_dir(&self.current_project.as_ref().map(|p| p.path.clone()))
                 {
-                    self.open_project(dir_path)
+                    self.open_project(dir_path);
                 }
             }
-            Message::TabSelected(tab) => {
-                self.tabs.activate(tab);
+            Message::BufferSelectedIdx(index) => {
+                if let Some(id) = self.buffers.id(index) {
+                    self.buffers.activate(*id);
+                }
                 self.redraw_active_editor();
             }
-            Message::OpenProject(project) => self.open_project(project),
-            Message::OpenFile(file_path) => self.open_file(file_path),
+            Message::OpenProject(project) => {
+                self.open_project(project);
+            }
+            Message::OpenFile(file_path) => return self.open_file(file_path).unwrap(),
             Message::SaveFile => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
-                    match tab.save() {
+                if let Some(active) = self.buffers.active() {
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    match buf.save() {
                         Ok(_) => {}
                         Err(err) => log::error!("could not open directory: {}", err),
                     }
                 };
             }
-            Message::TabCloseCurrent => {
-                if let Some(active) = self.tabs.active() {
-                    self.tabs.remove(active);
+            Message::BufferCloseCurrent => {
+                if let Some(active) = self.buffers.active() {
+                    self.buffers.buf_remove(active);
                     self.redraw_active_editor();
                 }
             }
-            Message::TabClose(tab) => {
-                self.tabs.remove(tab);
+            Message::BufferCloseIdx(index) => {
+                if let Some(id) = self.buffers.id(index) {
+                    self.buffers.buf_remove(*id);
+                }
                 self.redraw_active_editor();
             }
-            Message::TabSearch(text) => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
-                    return tab.search_open(Some(text));
+            Message::BufferSearch(text) => {
+                if let Some(active) = self.buffers.active() {
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    return buf.search_open(Some(text));
                 }
             }
-            Message::TabSearchOpen => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
-                    return tab.search_open(None);
+            Message::BufferSearchOpen => {
+                if let Some(active) = self.buffers.active() {
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    return buf.search_open(None);
                 }
             }
-            Message::TabSearchClose => {
-                if let Some(active) = self.tabs.active() {
-                    let tab = self.tabs.tab_mut(active).unwrap();
-                    return tab.search_close();
+            Message::BufferSearchClose => {
+                if let Some(active) = self.buffers.active() {
+                    let buf = self.buffers.buf_mut(active).unwrap();
+                    return buf.search_close();
                 }
             }
             Message::KeyPressed(modifier, key) => {
@@ -237,28 +258,34 @@ impl App {
                                 }
                             }
                         }
-                        project::NodeKind::File => {
-                            self.open_file(node.path);
-                        }
+                        project::NodeKind::File => return self.open_file(node.path).unwrap(),
                     }
                 }
             }
             Message::AutoScroll => {
                 if let Some(auto_scroll) = self.auto_scroll {
-                    if let Some(active) = self.tabs.active() {
-                        let tab = self.tabs.tab_mut(active).unwrap();
+                    if let Some(active) = self.buffers.active() {
+                        let buf = self.buffers.buf_mut(active).unwrap();
 
-                        tab.scroll(auto_scroll)
+                        buf.scroll(auto_scroll)
                     }
                 }
             }
-            Message::SetAutoScroll(auto_scroll) => self.auto_scroll = auto_scroll,
+            Message::SetAutoScroll(auto_scroll) => {
+                self.auto_scroll = auto_scroll;
+            }
+            Message::LSPMessage(id, msg) => {
+                return self.language_servers.on_message(id, msg);
+            }
+            Message::Error(err) => {
+                log::error!("{}", err)
+            }
+            Message::None => (),
             #[allow(unreachable_patterns)]
             _ => {
                 todo!()
             }
         }
-
         Task::none()
     }
 
@@ -290,7 +317,7 @@ impl App {
                 open: pick_list::Icon {
                     font: font::ICON_SOLID,
                     // todo: list of codepoints used
-                    code_point: font::arrow_dowwn(),
+                    code_point: font::arrow_down(),
                     size: None,
                     line_height: iced::widget::text::LineHeight::default(),
                     shaping: iced::widget::text::Shaping::Basic,
@@ -305,7 +332,63 @@ impl App {
 
         let pane_grid = PaneGrid::new(&self.panes, |_, state, _| {
             if state.pane_type == PaneType::Editor {
-                pane_grid::Content::new(self.tabs.view())
+                let main = if let Some(active) = self.buffers.active() {
+                    let buf = self.buffers.buf(active).unwrap();
+
+                    let mut col = Column::new();
+                    if buf.is_search_open() {
+                        col = col.push(
+                            text_input("Find Something...", &buf.search.text)
+                                .on_input(Message::BufferSearch)
+                                .id(buf.search.id.clone()),
+                        )
+                    }
+
+                    // TODO: halloy's combo_box
+                    col.push(
+                        text_box::text_box(&buf.editor, buf.metrics).id(buf.text_box_id.clone()),
+                    )
+                } else {
+                    Column::new()
+                };
+
+                let mut tab_bar = self
+                    .buffers
+                    .buffer_list()
+                    .iter()
+                    .enumerate()
+                    .fold(
+                        TabBar::new(Message::BufferSelectedIdx),
+                        |tab_bar, (index, tab)| {
+                            let name = self
+                                .buffers
+                                .buf(*tab)
+                                .unwrap()
+                                .get_name()
+                                .unwrap_or("New Tab".to_string());
+                            tab_bar.push(index, iced_aw::TabLabel::Text(name))
+                        },
+                    )
+                    .on_close(Message::BufferCloseIdx)
+                    .width(Length::Shrink)
+                    .tab_width(Length::Shrink);
+
+                if let Some(idx) = self.buffers.active_idx() {
+                    tab_bar = tab_bar.set_active_tab(&idx);
+                }
+
+                pane_grid::Content::new(
+                    Column::new()
+                        .push(
+                            Scrollable::new(tab_bar)
+                                .width(Length::Fill)
+                                .height(Length::Shrink)
+                                .direction(scrollable::Direction::Horizontal(
+                                    scrollable::Scrollbar::default().scroller_width(0),
+                                )),
+                        )
+                        .push(main),
+                )
             } else {
                 let file_tree = self.project_tree.view();
 
@@ -332,6 +415,8 @@ impl App {
     }
 
     // note: events seem to call on everybody's on_event, with subscription last
+    // explanation: this function is run when necessary i.e. "show me (iced) which subscriptions are still ongoing"
+    // NOT "show me all events then I will check subscriptions"
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![event::listen_with(|event, status, _| match event {
             event::Event::Keyboard(keyboard::Event::KeyPressed { modifiers, key, .. }) => {
@@ -342,6 +427,33 @@ impl App {
             }
             _ => None,
         })];
+
+        // per-server reading tasks
+        let mut workers: Vec<_> = self
+            .language_servers
+            .servers
+            .iter()
+            .enumerate()
+            .map(|(_, (id, state))| match state {
+                lsp::ServerState::Running(server) => vec![lsp_worker(
+                    id.clone(),
+                    server.new_reader(),
+                    server.new_reader_error(),
+                )],
+                lsp::ServerState::Starting(server, ..) => {
+                    vec![lsp_worker(
+                        id.clone(),
+                        server.new_reader(),
+                        server.new_reader_error(),
+                    )]
+                }
+            })
+            .flatten()
+            .collect();
+        // subscription::run takes in a function that returns a stream of messages
+        workers.drain(0..).enumerate().for_each(|(idx, x)| {
+            subscriptions.push(Subscription::run_with_id(idx, x));
+        });
 
         if let Some(_) = self.auto_scroll {
             subscriptions
@@ -357,34 +469,73 @@ impl App {
     }
 
     fn open_project(&mut self, path: PathBuf) {
-        let path = fs::canonicalize(&path).expect("could not canonicalize");
+        let path = fs::canonicalize(&path).expect("could not canonicalize"); // methods beginning with 'open' should canonicalize
         self.current_project = Some(project::Project::new(path.clone()));
         self.project_tree.clear();
         self.project_tree.insert(path, 0, 0);
     }
 
-    fn open_file(&mut self, file_path: PathBuf) {
-        let file_path = fs::canonicalize(&file_path).expect("could not canonicalize");
-        if let Some(pos) = self.tabs.position(file_path.clone()) {
-            self.tabs.activate(pos);
+    fn open_file(&mut self, file_path: PathBuf) -> io::Result<Task<Message>> {
+        let file_path = fs::canonicalize(&file_path).expect("could not canonicalize"); // methods beginning with 'open' should canonicalize
+        if let Some(pos) = self.buffers.id_from_path(&file_path) {
+            self.buffers.activate(pos);
             self.redraw_active_editor();
-            return;
+            return Ok(Task::none());
         }
-        let index = match self.tabs.insert(Some(file_path)) {
-            Ok(ok) => ok,
-            Err(err) => {
-                log::error!("could not open file: {}", err);
-                return;
-            }
-        };
-        self.tabs.activate(index);
-        self.redraw_active_editor()
+        let buf_id = self.buffers.insert(Some(file_path.clone()))?;
+        self.buffers.activate(buf_id);
+
+        self.language_servers.get_or_init_lsp("rust".to_string());
+        let mut text = String::new();
+        self.buffers
+            .buf(buf_id)
+            .unwrap()
+            .editor
+            .read()
+            .unwrap()
+            .with_buffer(|buf| {
+                for line in buf.lines.iter() {
+                    text.push_str(line.text());
+                    text.push_str(line.ending().as_str());
+                }
+            });
+        self.language_servers.register_buffer(
+            buf_id,
+            lsp::BufferSnapshot::new(
+                0,
+                url::Url::from_file_path(file_path.as_path()).unwrap(),
+                "rust".to_string(),
+                text,
+            ),
+        );
+        self.redraw_active_editor();
+
+        let pending_tasks: Task<Message> = self
+            .language_servers
+            .servers
+            .iter_mut()
+            .filter_map(|x| match x.1 {
+                lsp::ServerState::Starting(.., task) => task.take(),
+                lsp::ServerState::Running(..) => None,
+            })
+            .fold(Task::none(), |task, x| task.chain(x));
+
+        Ok(pending_tasks)
+    }
+
+    // TODO if init message from server has not arrived, queue messages
+    // assuming init message arrived
+    fn try_lsp_send(writer: lsp::Writer, request: lsp::Message) -> Task<Message> {
+        Task::perform(async move { writer.write(request).await }, |x| match x {
+            Ok(_) => Message::None,
+            Err(err) => Message::Error(format!("{:?}", err)),
+        })
     }
 
     fn redraw_active_editor(&mut self) {
-        if let Some(active) = self.tabs.active() {
-            let tab = self.tabs.tab_mut(active).unwrap();
-            tab.redraw();
+        if let Some(active) = self.buffers.active() {
+            let buf = self.buffers.buf_mut(active).unwrap();
+            buf.redraw();
         }
     }
 
@@ -452,4 +603,37 @@ fn select_file(working_dir: &Option<PathBuf>) -> Option<PathBuf> {
         return Some(file);
     }
     return None;
+}
+
+// reads from channel and sends Message::LSPMessage
+fn lsp_worker(
+    id: lsp::Id,
+    reader: lsp::Reader<lsp::Message>,
+    error: lsp::Reader<String>,
+) -> impl futures::Stream<Item = Message> {
+    stream::channel(100, async move |mut output| {
+        loop {
+            smol::future::race(
+                async {
+                    let msg = match reader.read().await {
+                        Ok(ok) => ok,
+                        Err(err) => {
+                            panic!("channel closed: {}", err);
+                        }
+                    };
+                    output.send(Message::LSPMessage(id, msg)).await.unwrap();
+                },
+                async {
+                    let msg = match error.read().await {
+                        Ok(ok) => ok,
+                        Err(err) => {
+                            panic!("channel closed: {}", err);
+                        }
+                    };
+                    log::error!("{}", msg)
+                },
+            )
+            .await
+        }
+    })
 }
