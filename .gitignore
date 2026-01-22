@@ -1,5 +1,6 @@
 /target
 .vscode
+.idea
 perf.data
 perf.data.old
 flamegraph.svg
