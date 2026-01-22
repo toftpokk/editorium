@@ -12,6 +12,7 @@ use iced::{
     Element, Length, Subscription, Task, event, keyboard, time,
     widget::{Container, PaneGrid, button, column, pane_grid, pick_list, row, scrollable},
 };
+use iced_core::theme;
 use key_binds::KeyBind;
 use rfd::FileDialog;
 
@@ -21,7 +22,7 @@ mod key_binds;
 mod project;
 mod tab;
 // mod text_box;
-// mod theme;
+// mod theme; TODO: custom theme
 
 // TODO move
 static FONT_SYSTEM: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
@@ -66,16 +67,12 @@ fn main() -> Result<(), iced::Error> {
     // use editorium=debug to get only this crate
     env_logger::init();
 
-    iced::application(App::new, App::update, App::view).run()
-
-    // iced::application("Editorium", App::update, App::view)
-    //     .subscription(App::subscription)
-    //     .theme(App::theme)
-    //     .settings(iced::Settings {
-    //         fonts: font::load(),
-    //         ..Default::default()
-    //     })
-    //     .run_with(App::new)
+    iced::application(App::new, App::update, App::view)
+        .theme(App::theme)
+        .subscription(App::subscription)
+        .font(font::FONT_AWESOME)
+        .font(font::FONT_AWESOME_SOLID)
+        .run()
 }
 
 struct Pane {
@@ -102,6 +99,7 @@ struct App {
     current_project: Option<project::Project>,
     panes: pane_grid::State<Pane>,
     auto_scroll: Option<f32>,
+    theme: theme::Theme,
 }
 
 fn create_pane() -> pane_grid::State<Pane> {
@@ -128,6 +126,7 @@ impl App {
             current_project: None,
             panes: create_pane(),
             auto_scroll: None,
+            theme: theme::Theme::CatppuccinFrappe,
         };
 
         if let Some(path) = cli.path {
@@ -274,35 +273,35 @@ impl App {
         };
 
         let recent_projects = vec![project::Project::new(cwd)];
-        // let nav_bar = row![
-        //     pick_list(
-        //         recent_projects,
-        //         self.current_project.clone(),
-        //         |project: project::Project| Message::OpenProject(project.path),
-        //     )
-        //     .handle(pick_list::Handle::Dynamic {
-        //         closed: pick_list::Icon {
-        //             font: font::ICON_SOLID,
-        //             code_point: font::arrow_left(),
-        //             size: None,
-        //             line_height: iced::widget::text::LineHeight::default(),
-        //             shaping: iced::widget::text::Shaping::Basic,
-        //         },
-        //         open: pick_list::Icon {
-        //             font: font::ICON_SOLID,
-        //             // todo: list of codepoints used
-        //             code_point: font::arrow_dowwn(),
-        //             size: None,
-        //             line_height: iced::widget::text::LineHeight::default(),
-        //             shaping: iced::widget::text::Shaping::Basic,
-        //         }
-        //     })
-        //     .placeholder("Choose a Project"),
-        //     button("Open File").on_press(Message::OpenFileSelector),
-        //     button("Open Dir").on_press(Message::OpenDirectorySelector) //     // current_project
-        //                                                                 //     // current git branch
-        //                                                                 //     // run
-        // ];
+        let nav_bar = row![
+            pick_list(
+                recent_projects,
+                self.current_project.clone(),
+                |project: project::Project| Message::OpenProject(project.path),
+            )
+            .handle(pick_list::Handle::Dynamic {
+                closed: pick_list::Icon {
+                    font: font::ICON_SOLID,
+                    code_point: font::arrow_left(),
+                    size: None,
+                    line_height: iced::widget::text::LineHeight::default(),
+                    shaping: iced::widget::text::Shaping::Basic,
+                },
+                open: pick_list::Icon {
+                    font: font::ICON_SOLID,
+                    // todo: list of codepoints used
+                    code_point: font::arrow_dowwn(),
+                    size: None,
+                    line_height: iced::widget::text::LineHeight::default(),
+                    shaping: iced::widget::text::Shaping::Basic,
+                }
+            })
+            .placeholder("Choose a Project"),
+            button("Open File").on_press(Message::OpenFileSelector),
+            button("Open Dir").on_press(Message::OpenDirectorySelector) // current_project
+                                                                        // current git branch
+                                                                        // run
+        ];
 
         let pane_grid = PaneGrid::new(&self.panes, |_, state, _| {
             if state.pane_type == PaneType::Editor {
@@ -326,8 +325,7 @@ impl App {
         .spacing(10)
         .on_resize(10, Message::PaneResized);
 
-        let content: Element<Message> = column![].into();
-        // let content: Element<Message> = column![nav_bar, pane_grid].into();
+        let content: Element<Message> = column![nav_bar, pane_grid].into();
 
         // content.explain(iced::Color::from_rgb(1.0, 0.0, 0.0))
         content
@@ -353,10 +351,9 @@ impl App {
         Subscription::batch(subscriptions)
     }
 
-    // use mytheme as Theme
-    // fn theme(&self) -> theme::MyTheme {
-    //     theme::MyTheme::default()
-    // }
+    fn theme(&self) -> theme::Theme {
+        self.theme.clone()
+    }
 
     fn open_project(&mut self, path: PathBuf) {
         let path = fs::canonicalize(&path).expect("could not canonicalize");

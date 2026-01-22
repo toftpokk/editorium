@@ -102,45 +102,41 @@ impl ProjectTree {
         return self.order.iter().position(|x| *x == id);
     }
 
-    pub fn view(&self) -> Column<Message> {
-        Column::from_vec(vec![])
+    pub fn view(&self) -> Column<'_, Message> {
+        let nodes: Vec<Element<Message>> =
+            self.order
+                .iter()
+                .map(|id| {
+                    let node = self.items.get(id).unwrap();
+                    let elem = match &node.kind {
+                        NodeKind::File => button(text(&node.name))
+                            .on_press(Message::OpenFile(node.path.to_owned())),
+                        NodeKind::Directory { open, .. } => {
+                            let icon = if *open {
+                                font::caret_down()
+                            } else {
+                                font::caret_right()
+                            };
+                            button(
+                                Row::new()
+                                    .push(text(icon).font(font::ICON_SOLID).width(15.0))
+                                    .push(text(&node.name))
+                                    .spacing(4.0),
+                            )
+                            .on_press(Message::ProjectTreeSelect(node.id))
+                        }
+                    };
+                    elem.padding(Padding {
+                        top: 5.0,
+                        right: 5.0,
+                        bottom: 5.0,
+                        left: (node.indent as f32 + 1.0) * 15.0,
+                    })
+                    .into()
+                })
+                .collect();
+        Column::from_vec(nodes)
     }
-
-    // pub fn view(&self) -> Column<Message, theme::MyTheme> {
-    //     let nodes: Vec<Element<Message, theme::MyTheme>> =
-    //         self.order
-    //             .iter()
-    //             .map(|id| {
-    //                 let node = self.items.get(id).unwrap();
-    //                 let elem = match &node.kind {
-    //                     NodeKind::File => button(text(&node.name))
-    //                         .on_press(Message::OpenFile(node.path.to_owned())),
-    //                     NodeKind::Directory { open, .. } => {
-    //                         let icon = if *open {
-    //                             font::caret_down()
-    //                         } else {
-    //                             font::caret_right()
-    //                         };
-    //                         button(
-    //                             Row::new()
-    //                                 .push(text(icon).font(font::ICON_SOLID).width(15.0))
-    //                                 .push(text(&node.name))
-    //                                 .spacing(4.0),
-    //                         )
-    //                         .on_press(Message::ProjectTreeSelect(node.id))
-    //                     }
-    //                 };
-    //                 elem.padding(Padding {
-    //                     top: 5.0,
-    //                     right: 5.0,
-    //                     bottom: 5.0,
-    //                     left: (node.indent as f32 + 1.0) * 15.0,
-    //                 })
-    //                 .into()
-    //             })
-    //             .collect();
-    //     Column::from_vec(nodes)
-    // }
 }
 
 #[derive(Clone)]

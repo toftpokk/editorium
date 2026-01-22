@@ -14,19 +14,8 @@ pub const ICON_SOLID: Font = Font {
     ..iced::Font::DEFAULT
 };
 
-// loads static copy-on-write fonts
-// copied from halloy
-pub fn load() -> Vec<Cow<'static, [u8]>> {
-    vec![
-        include_bytes!("../fonts/font-awesome.otf")
-            .as_slice()
-            .into(),
-        include_bytes!("../fonts/font-awesome-solid.otf")
-            .as_slice()
-            .into(),
-        // iced_fonts::REQUIRED_FONT_BYTES.into(),
-    ]
-}
+pub const FONT_AWESOME: &[u8] = include_bytes!("../fonts/font-awesome.otf");
+pub const FONT_AWESOME_SOLID: &[u8] = include_bytes!("../fonts/font-awesome-solid.otf");
 
 pub fn arrow_dowwn() -> char {
     '\u{f0d7}'

@@ -1,34 +1,35 @@
-use iced::Color;
+// use iced::Color;
 
-mod button;
-mod container;
-mod menu;
-mod pane_grid;
-mod pick_list;
-mod scrollable;
-mod tab_bar;
-mod text;
-mod text_input;
+// mod button;
+// mod container;
+// mod menu;
+// mod pane_grid;
+// mod pick_list;
+// mod scrollable;
+// mod tab_bar;
+// mod text;
+// mod text_input;
 
 // iced::Theme requires a default
+// TODO: rename theme
 pub struct MyTheme {
-    text: Color,
-    text_inverse: Color,
-    background_accent: Color,
-    background: Color,
-    background_light: Color,
-    window_background: Color,
+    // text: Color,
+    // text_inverse: Color,
+    // background_accent: Color,
+    // background: Color,
+    // background_light: Color,
+    // window_background: Color,
 }
 
 impl Default for MyTheme {
     fn default() -> Self {
         Self {
-            text: Color::from_rgb(1.0, 1.0, 1.0),
-            text_inverse: Color::from_rgb(0.0, 0.0, 0.0),
-            background_accent: Color::from_rgb(1.0, 0.82, 0.502),
-            background: Color::from_rgb(0.271, 0.271, 0.271),
-            background_light: Color::from_rgb(0.35, 0.35, 0.35),
-            window_background: Color::from_rgb(0.271, 0.271, 0.271),
+        //             text: Color::from_rgb(1.0, 1.0, 1.0),
+        //             text_inverse: Color::from_rgb(0.0, 0.0, 0.0),
+        //             background_accent: Color::from_rgb(1.0, 0.82, 0.502),
+        //             background: Color::from_rgb(0.271, 0.271, 0.271),
+        //             background_light: Color::from_rgb(0.35, 0.35, 0.35),
+        //             window_background: Color::from_rgb(0.271, 0.271, 0.271),
         }
     }
 }

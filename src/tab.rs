@@ -228,33 +228,20 @@ impl Tab {
         });
     }
 
-    pub fn view(&self) -> Column<Message> {
-        Column::new()
-        // let mut col = Column::new();
-        // if self.search_open {
-        //     col = col.push(
-        //         text_input("Find Something...", &self.search.text)
-        //             .on_input(Message::TabSearch)
-        //             .id(self.search.id.clone()),
-        //     )
-        // }
+    pub fn view(&self) -> Column<'_, Message> {
+        let mut col = Column::new();
+        if self.search_open {
+            col = col.push(
+                text_input("Find Something...", &self.search.text)
+                    .on_input(Message::TabSearch)
+                    .id(self.search.id.clone()),
+            )
+        }
 
-        // // TODO: halloy's combo_box
+        // TODO: halloy's combo_box
         // col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
+        col
     }
-    // pub fn view(&self) -> Column<Message, theme::MyTheme> {
-    //     let mut col = Column::new();
-    //     if self.search_open {
-    //         col = col.push(
-    //             text_input("Find Something...", &self.search.text)
-    //                 .on_input(Message::TabSearch)
-    //                 .id(self.search.id.clone()),
-    //         )
-    //     }
-
-    //     // TODO: halloy's combo_box
-    //     col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
-    // }
 
     pub fn redraw(&self) {
         self.editor.write().unwrap().set_redraw(true);

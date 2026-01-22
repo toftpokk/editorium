@@ -12,6 +12,8 @@ rfd = "0.15.3"
 clap = { version = "4.5.37", features = ["derive"] }
 cosmic-text = { version = "0.16.0", features = ["syntect"] }
 syntect = "5.2.0"
+iced_core = "0.14.0"
+iced_fonts = "0.3.0"
 
 [profile.dev]
 opt-level = 1
