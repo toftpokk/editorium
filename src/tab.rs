@@ -91,7 +91,7 @@ impl TabView {
         })
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<'_, Message> {
         let main = if let Some(active) = self.active {
             let tab = self.tabs.get(active).unwrap();
             tab.view()
