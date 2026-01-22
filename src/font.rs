@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use iced::Font;
-use iced_aw::iced_fonts;
 
 // family name ref: https://github.com/danielmbomfim/iced_font_awesome/
 pub const ICON_REGULAR: Font = Font {
@@ -25,7 +24,7 @@ pub fn load() -> Vec<Cow<'static, [u8]>> {
         include_bytes!("../fonts/font-awesome-solid.otf")
             .as_slice()
             .into(),
-        iced_fonts::REQUIRED_FONT_BYTES.into(),
+        // iced_fonts::REQUIRED_FONT_BYTES.into(),
     ]
 }
 

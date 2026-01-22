@@ -3,12 +3,11 @@ use std::sync::RwLock;
 use std::{fs, io};
 
 use cosmic_text::{Attrs, Buffer, Edit, Metrics, SyntaxEditor, SyntaxSystem};
-use iced::advanced::widget::operate;
 use iced::widget::{self, Column, Scrollable, scrollable, text_input};
-use iced::{Element, Length, Task, advanced};
+use iced::{Element, Length, Task};
 use iced_aw::TabBar;
 
-use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, text_box, theme};
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM};
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
@@ -91,47 +90,50 @@ impl TabView {
             }
         })
     }
-
-    pub fn view(&self) -> Element<Message, theme::MyTheme> {
-        let main = if let Some(active) = self.active {
-            let tab = self.tabs.get(active).unwrap();
-            tab.view()
-        } else {
-            // scrollable(Row::new())
-            Column::new()
-        };
-
-        let mut tab_bar = self
-            .tabs
-            .iter()
-            .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
-                let idx = tab_bar.size();
-                tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
-            })
-            .on_close(Message::TabClose)
-            .width(Length::Shrink)
-            .tab_width(Length::Shrink);
-
-        if let Some(active) = self.active {
-            tab_bar = tab_bar.set_active_tab(&active);
-        }
-
-        Column::new()
-            .push(
-                Scrollable::new(tab_bar)
-                    .width(Length::Fill)
-                    .height(Length::Shrink)
-                    .direction(scrollable::Direction::Horizontal(
-                        scrollable::Scrollbar::default().scroller_width(0),
-                    )),
-            )
-            .push(main)
-            .into()
+    pub fn view(&self) -> Element<Message> {
+        Column::from_vec(vec![]).into()
     }
+
+    // pub fn view(&self) -> Element<Message, theme::MyTheme> {
+    //     let main = if let Some(active) = self.active {
+    //         let tab = self.tabs.get(active).unwrap();
+    //         tab.view()
+    //     } else {
+    //         // scrollable(Row::new())
+    //         Column::new()
+    //     };
+
+    //     let mut tab_bar = self
+    //         .tabs
+    //         .iter()
+    //         .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
+    //             let idx = tab_bar.size();
+    //             tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
+    //         })
+    //         .on_close(Message::TabClose)
+    //         .width(Length::Shrink)
+    //         .tab_width(Length::Shrink);
+
+    //     if let Some(active) = self.active {
+    //         tab_bar = tab_bar.set_active_tab(&active);
+    //     }
+
+    //     Column::new()
+    //         .push(
+    //             Scrollable::new(tab_bar)
+    //                 .width(Length::Fill)
+    //                 .height(Length::Shrink)
+    //                 .direction(scrollable::Direction::Horizontal(
+    //                     scrollable::Scrollbar::default().scroller_width(0),
+    //                 )),
+    //         )
+    //         .push(main)
+    //         .into()
+    // }
 }
 
 pub struct Search {
-    id: text_input::Id,
+    id: iced::widget::Id,
     text: String,
 }
 
@@ -141,7 +143,7 @@ pub struct Tab {
     editor: RwLock<SyntaxEditor<'static, 'static>>, // RwLock allows writing during draw
     attrs: Attrs<'static>,
     metrics: Metrics,
-    text_box_id: iced::advanced::widget::Id,
+    text_box_id: iced::widget::Id,
     search: Search,
     search_open: bool,
 }
@@ -160,11 +162,11 @@ impl Tab {
             attrs,
             metrics,
             search: Search {
-                id: text_input::Id::unique(),
+                id: iced::widget::Id::unique(),
                 text: "".to_string(),
             },
             search_open: false,
-            text_box_id: advanced::widget::Id::unique(),
+            text_box_id: iced::widget::Id::unique(),
         };
         tab.set_config();
 
@@ -209,15 +211,12 @@ impl Tab {
         // note: text seach is a good example of how events flow
         // also: editor is a good example of how leaf nodes work (widgets)
         self.search_open = true;
-        widget::text_input::focus(self.search.id.clone())
+        widget::operation::focus(self.search.id.clone())
     }
 
     pub fn search_close(&mut self) -> Task<Message> {
         self.search_open = false;
-        // lifesaver: https://jl710.github.io/iced-guide/widget_api/operations.html
-        operate(advanced::widget::operation::focusable::focus(
-            self.text_box_id.clone(),
-        ))
+        widget::operation::focus(self.text_box_id.clone())
     }
 
     pub fn scroll(&mut self, scroll: f32) {
@@ -229,19 +228,33 @@ impl Tab {
         });
     }
 
-    pub fn view(&self) -> Column<Message, theme::MyTheme> {
-        let mut col = Column::new();
-        if self.search_open {
-            col = col.push(
-                text_input("Find Something...", &self.search.text)
-                    .on_input(Message::TabSearch)
-                    .id(self.search.id.clone()),
-            )
-        }
+    pub fn view(&self) -> Column<Message> {
+        Column::new()
+        // let mut col = Column::new();
+        // if self.search_open {
+        //     col = col.push(
+        //         text_input("Find Something...", &self.search.text)
+        //             .on_input(Message::TabSearch)
+        //             .id(self.search.id.clone()),
+        //     )
+        // }
 
-        // TODO: halloy's combo_box
-        col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
+        // // TODO: halloy's combo_box
+        // col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
     }
+    // pub fn view(&self) -> Column<Message, theme::MyTheme> {
+    //     let mut col = Column::new();
+    //     if self.search_open {
+    //         col = col.push(
+    //             text_input("Find Something...", &self.search.text)
+    //                 .on_input(Message::TabSearch)
+    //                 .id(self.search.id.clone()),
+    //         )
+    //     }
+
+    //     // TODO: halloy's combo_box
+    //     col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
+    // }
 
     pub fn redraw(&self) {
         self.editor.write().unwrap().set_redraw(true);

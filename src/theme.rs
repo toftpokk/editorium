@@ -1,4 +1,4 @@
-use iced::{Color, daemon::DefaultStyle};
+use iced::Color;
 
 mod button;
 mod container;
@@ -34,11 +34,11 @@ impl Default for MyTheme {
 }
 
 // iced::Theme requires a default style
-impl DefaultStyle for MyTheme {
-    fn default_style(&self) -> iced::daemon::Appearance {
-        iced::daemon::Appearance {
-            background_color: self.window_background,
-            text_color: self.text,
-        }
-    }
-}
+// impl DefaultStyle for MyTheme {
+//     fn default_style(&self) -> iced::daemon::Appearance {
+//         iced::daemon::Appearance {
+//             background_color: self.window_background,
+//             text_color: self.text,
+//         }
+//     }
+// }
