@@ -21,7 +21,7 @@ mod font;
 mod key_binds;
 mod project;
 mod tab;
-// mod text_box;
+mod text_box;
 // mod theme; TODO: custom theme
 
 // TODO move

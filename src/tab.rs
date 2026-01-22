@@ -7,7 +7,7 @@ use iced::widget::{self, Column, Scrollable, scrollable, text_input};
 use iced::{Element, Length, Task};
 use iced_aw::TabBar;
 
-use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM};
+use crate::{FONT_SYSTEM, Message, SYNTAX_SYSTEM, text_box};
 
 // TODO: use iced editor as an example for content RwLock
 // TODO: use viewer(model) instead of model.view()
@@ -90,46 +90,43 @@ impl TabView {
             }
         })
     }
+
     pub fn view(&self) -> Element<Message> {
-        Column::from_vec(vec![]).into()
+        let main = if let Some(active) = self.active {
+            let tab = self.tabs.get(active).unwrap();
+            tab.view()
+        } else {
+            // scrollable(Row::new())
+            Column::new()
+        };
+
+        let mut tab_bar = self
+            .tabs
+            .iter()
+            .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
+                let idx = tab_bar.size();
+                tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
+            })
+            .on_close(Message::TabClose)
+            .width(Length::Shrink)
+            .tab_width(Length::Shrink);
+
+        if let Some(active) = self.active {
+            tab_bar = tab_bar.set_active_tab(&active);
+        }
+
+        Column::new()
+            .push(
+                Scrollable::new(tab_bar)
+                    .width(Length::Fill)
+                    .height(Length::Shrink)
+                    .direction(scrollable::Direction::Horizontal(
+                        scrollable::Scrollbar::default().scroller_width(0),
+                    )),
+            )
+            .push(main)
+            .into()
     }
-
-    // pub fn view(&self) -> Element<Message, theme::MyTheme> {
-    //     let main = if let Some(active) = self.active {
-    //         let tab = self.tabs.get(active).unwrap();
-    //         tab.view()
-    //     } else {
-    //         // scrollable(Row::new())
-    //         Column::new()
-    //     };
-
-    //     let mut tab_bar = self
-    //         .tabs
-    //         .iter()
-    //         .fold(TabBar::new(Message::TabSelected), |tab_bar, tab| {
-    //             let idx = tab_bar.size();
-    //             tab_bar.push(idx, iced_aw::TabLabel::Text(tab.get_name().to_owned()))
-    //         })
-    //         .on_close(Message::TabClose)
-    //         .width(Length::Shrink)
-    //         .tab_width(Length::Shrink);
-
-    //     if let Some(active) = self.active {
-    //         tab_bar = tab_bar.set_active_tab(&active);
-    //     }
-
-    //     Column::new()
-    //         .push(
-    //             Scrollable::new(tab_bar)
-    //                 .width(Length::Fill)
-    //                 .height(Length::Shrink)
-    //                 .direction(scrollable::Direction::Horizontal(
-    //                     scrollable::Scrollbar::default().scroller_width(0),
-    //                 )),
-    //         )
-    //         .push(main)
-    //         .into()
-    // }
 }
 
 pub struct Search {
@@ -239,8 +236,7 @@ impl Tab {
         }
 
         // TODO: halloy's combo_box
-        // col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
-        col
+        col.push(text_box::text_box(&self.editor, self.metrics).id(self.text_box_id.clone()))
     }
 
     pub fn redraw(&self) {

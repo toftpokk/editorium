@@ -1,13 +1,20 @@
 use cosmic_text::{Attrs, AttrsList, BufferLine, Edit, LineEnding, Metrics, Motion, SyntaxEditor};
 use iced::{
-    Element, Length, Padding, Rectangle, Size,
-    advanced::{
-        Layout, Widget, image, layout,
-        widget::{self, Id, operation},
-    },
+    Element,
+    Length,
+    Padding,
+    Rectangle,
+    Size,
+    // advanced::{
+    //     Layout, Widget, image, layout,
+    //     widget::{self, Id, operation},
+    // },
     event::Status,
-    keyboard, mouse,
+    keyboard,
+    mouse,
+    widget::Id,
 };
+use iced_core::{Widget, image, layout, renderer, text, widget};
 use std::{
     cell::{Cell, RefCell},
     cmp,
@@ -60,24 +67,23 @@ impl<'a> TextBox<'a> {
         self
     }
 
-    fn finish_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
-        if state.redo_buffer.len() > 0 {
-            state.redo_buffer.clear();
-        }
-        if let Some(change) = editor.finish_change() {
-            state.undo_buffer.push(change);
-        }
-    }
-    fn start_new_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
-        self.finish_change(editor, state);
-        editor.start_change();
-    }
+    // fn finish_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
+    //     if state.redo_buffer.len() > 0 {
+    //         state.redo_buffer.clear();
+    //     }
+    //     if let Some(change) = editor.finish_change() {
+    //         state.undo_buffer.push(change);
+    //     }
+    // }
+    // fn start_new_change(&self, editor: &mut SyntaxEditor<'static, 'static>, state: &mut State) {
+    //     self.finish_change(editor, state);
+    //     editor.start_change();
+    // }
 }
 
 impl<'a, Theme, Renderer> Widget<Message, Theme, Renderer> for TextBox<'a>
 where
-    Renderer:
-        image::Renderer<Handle = image::Handle> + iced::advanced::text::Renderer<Font = iced::Font>,
+    Renderer: image::Renderer<Handle = image::Handle> + text::Renderer<Font = iced::Font>,
 {
     fn size(&self) -> Size<Length> {
         Size {
@@ -91,7 +97,7 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         _tree: &mut widget::Tree,
         _renderer: &Renderer,
         limits: &layout::Limits,
@@ -116,11 +122,11 @@ where
                     Size::new(w, h)
                 });
 
-                iced::advanced::layout::Node::new(
+                layout::Node::new(
                     limits
                         .height(min_bounds.height)
                         .max()
-                        .expand(Size::new(0.0, self.padding.vertical())),
+                        .expand(Size::new(0.0, self.padding.y())),
                 )
             }
         }
@@ -131,9 +137,9 @@ where
         tree: &widget::Tree,
         renderer: &mut Renderer,
         _theme: &Theme,
-        _style: &iced::advanced::renderer::Style,
-        layout: Layout<'_>,
-        _cursor: iced::advanced::mouse::Cursor,
+        _style: &renderer::Style,
+        layout: layout::Layout<'_>,
+        _cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
         let time_draw = Instant::now();
@@ -143,11 +149,11 @@ where
         let mut swash_cache = swash_cache().write().expect("swash cache not writable");
         let mut editor = self.editor.write().expect("editor not writable");
 
-        let view_w = cmp::min(viewport.width as i32, layout.bounds().width as i32)
-            - self.padding.horizontal() as i32;
+        let view_w =
+            cmp::min(viewport.width as i32, layout.bounds().width as i32) - self.padding.x() as i32;
         // - scrollbar_w;
         let view_h = cmp::min(viewport.height as i32, layout.bounds().height as i32);
-        -self.padding.vertical() as i32;
+        // -self.padding.x() as i32;
 
         let image_w = view_w as i32;
         let image_h = view_h as i32;
@@ -182,6 +188,7 @@ where
                     cosmic_text::Wrap::None,
                     None,
                     8,
+                    cosmic_text::Hinting::Enabled,
                 );
 
                 let layout_line = &layout[0];
@@ -288,6 +295,7 @@ where
                             cosmic_text::Wrap::None,
                             None,
                             8,
+                            cosmic_text::Hinting::Enabled,
                         );
 
                         let layout_line = &layout[0];
@@ -377,7 +385,9 @@ where
 
             let image = image::Image::from(handle).filter_method(image::FilterMethod::Nearest);
 
-            renderer.draw_image(image, bounds);
+            // TODO check what is clip_bounds
+            // renderer.draw_image(image, bounds);
+            renderer.draw_image(image, bounds, bounds);
         }
         log::info!("draw time: {:02?}", time_draw.elapsed());
 
@@ -415,450 +425,451 @@ where
         // --- ---
     }
 
-    fn on_event(
-        &mut self,
-        tree: &mut widget::Tree,
-        event: iced::Event,
-        layout: Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        _renderer: &Renderer,
-        clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, Message>,
-        _viewport: &Rectangle,
-    ) -> iced::event::Status {
-        let state = tree.state.downcast_mut::<State>();
-        let gutter_width = state.gutter_width.get();
+    //     fn on_event(
+    //         &mut self,
+    //         tree: &mut widget::Tree,
+    //         event: iced::Event,
+    //         layout: Layout<'_>,
+    //         cursor: iced::advanced::mouse::Cursor,
+    //         _renderer: &Renderer,
+    //         clipboard: &mut dyn iced::advanced::Clipboard,
+    //         shell: &mut iced::advanced::Shell<'_, Message>,
+    //         _viewport: &Rectangle,
+    //     ) -> iced::event::Status {
+    //         let state = tree.state.downcast_mut::<State>();
+    //         let gutter_width = state.gutter_width.get();
 
-        let mut font_system = font_system().write().expect("font system is not writable");
-        let mut editor = self.editor.write().expect("editor is not writable");
-        let mut editor = editor.borrow_with(&mut font_system);
-        let (buffer_size, buffer_scroll) =
-            editor.with_buffer(|buffer| (buffer.size(), buffer.scroll()));
+    //         let mut font_system = font_system().write().expect("font system is not writable");
+    //         let mut editor = self.editor.write().expect("editor is not writable");
+    //         let mut editor = editor.borrow_with(&mut font_system);
+    //         let (buffer_size, buffer_scroll) =
+    //             editor.with_buffer(|buffer| (buffer.size(), buffer.scroll()));
 
-        let mut status = Status::Ignored;
-        match event {
-            iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-                state.modifiers_shift = modifiers.shift()
-            }
-            iced::Event::Keyboard(event) => {
-                if !state.focused {
-                    // skip
-                } else if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
-                    // if binding exists, assume captured
-                    match binding {
-                        Binding::Escape => {
-                            shell.publish(Message::TabSearchClose);
-                        }
-                        Binding::Enter => {
-                            self.start_new_change(&mut editor, state);
-                            editor.action(cosmic_text::Action::Enter)
-                        }
-                        Binding::Unindent => {
-                            self.start_new_change(&mut editor, state);
-                            editor.action(cosmic_text::Action::Unindent)
-                        }
-                        Binding::Tab => {
-                            self.start_new_change(&mut editor, state);
-                            editor.insert_string("    ", None);
-                            // TODO
-                            // if after first non-space character of line, use <tab>
-                            // else, tab until equal tab width
-                        }
-                        Binding::Backspace => {
-                            // todo: start new change if previous is not a delete action
-                            editor.start_change();
-                            editor.action(cosmic_text::Action::Backspace);
-                        }
-                        Binding::Delete => {
-                            // todo: start new change if previous is not a delete action
-                            editor.start_change();
-                            editor.action(cosmic_text::Action::Delete)
-                        }
-                        Binding::BackspaceWord => {
-                            self.start_new_change(&mut editor, state);
-                            if editor.delete_selection() {
-                                // selection deleted
-                            } else {
-                                let cursor_start = editor.cursor();
-                                editor.action(cosmic_text::Action::Motion(
-                                    cosmic_text::Motion::LeftWord,
-                                ));
-                                let cursor_end = editor.cursor();
-                                editor.delete_range(cursor_end, cursor_start);
-                                editor.set_cursor(cursor_end);
-                            }
-                        }
-                        Binding::DeleteWord => {
-                            self.start_new_change(&mut editor, state);
-                            if editor.delete_selection() {
-                                // selection deleted
-                            } else {
-                                let cursor_start = editor.cursor();
-                                editor.action(cosmic_text::Action::Motion(
-                                    cosmic_text::Motion::RightWord,
-                                ));
-                                let cursor_end = editor.cursor();
-                                editor.delete_range(cursor_start, cursor_end);
-                                editor.set_cursor(cursor_start);
-                            }
-                        }
-                        Binding::Copy => {
-                            if let Some(selection) = editor.copy_selection() {
-                                clipboard
-                                    .write(iced::advanced::clipboard::Kind::Standard, selection);
-                            }
-                        }
-                        Binding::Cut => {
-                            self.start_new_change(&mut editor, state);
-                            if let Some(content) = editor.copy_selection() {
-                                clipboard.write(iced::advanced::clipboard::Kind::Standard, content);
-                                editor.action(cosmic_text::Action::Delete);
-                            }
-                        }
-                        Binding::Paste => {
-                            if let Some(content) =
-                                clipboard.read(iced::advanced::clipboard::Kind::Standard)
-                            {
-                                self.start_new_change(&mut editor, state);
-                                editor.insert_string(&content, None);
-                            }
-                        }
-                        Binding::Move(binding_motion) => {
-                            self.start_new_change(&mut editor, state);
-                            if let Some((start, end)) = editor.selection_bounds() {
-                                editor.set_selection(cosmic_text::Selection::None);
+    //         let mut status = Status::Ignored;
+    //         match event {
+    //             iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+    //                 state.modifiers_shift = modifiers.shift()
+    //             }
+    //             iced::Event::Keyboard(event) => {
+    //                 if !state.focused {
+    //                     // skip
+    //                 } else if let Some(binding) = Binding::from_keyboard_event(event.clone()) {
+    //                     // if binding exists, assume captured
+    //                     match binding {
+    //                         Binding::Escape => {
+    //                             shell.publish(Message::TabSearchClose);
+    //                         }
+    //                         Binding::Enter => {
+    //                             self.start_new_change(&mut editor, state);
+    //                             editor.action(cosmic_text::Action::Enter)
+    //                         }
+    //                         Binding::Unindent => {
+    //                             self.start_new_change(&mut editor, state);
+    //                             editor.action(cosmic_text::Action::Unindent)
+    //                         }
+    //                         Binding::Tab => {
+    //                             self.start_new_change(&mut editor, state);
+    //                             editor.insert_string("    ", None);
+    //                             // TODO
+    //                             // if after first non-space character of line, use <tab>
+    //                             // else, tab until equal tab width
+    //                         }
+    //                         Binding::Backspace => {
+    //                             // todo: start new change if previous is not a delete action
+    //                             editor.start_change();
+    //                             editor.action(cosmic_text::Action::Backspace);
+    //                         }
+    //                         Binding::Delete => {
+    //                             // todo: start new change if previous is not a delete action
+    //                             editor.start_change();
+    //                             editor.action(cosmic_text::Action::Delete)
+    //                         }
+    //                         Binding::BackspaceWord => {
+    //                             self.start_new_change(&mut editor, state);
+    //                             if editor.delete_selection() {
+    //                                 // selection deleted
+    //                             } else {
+    //                                 let cursor_start = editor.cursor();
+    //                                 editor.action(cosmic_text::Action::Motion(
+    //                                     cosmic_text::Motion::LeftWord,
+    //                                 ));
+    //                                 let cursor_end = editor.cursor();
+    //                                 editor.delete_range(cursor_end, cursor_start);
+    //                                 editor.set_cursor(cursor_end);
+    //                             }
+    //                         }
+    //                         Binding::DeleteWord => {
+    //                             self.start_new_change(&mut editor, state);
+    //                             if editor.delete_selection() {
+    //                                 // selection deleted
+    //                             } else {
+    //                                 let cursor_start = editor.cursor();
+    //                                 editor.action(cosmic_text::Action::Motion(
+    //                                     cosmic_text::Motion::RightWord,
+    //                                 ));
+    //                                 let cursor_end = editor.cursor();
+    //                                 editor.delete_range(cursor_start, cursor_end);
+    //                                 editor.set_cursor(cursor_start);
+    //                             }
+    //                         }
+    //                         Binding::Copy => {
+    //                             if let Some(selection) = editor.copy_selection() {
+    //                                 clipboard
+    //                                     .write(iced::advanced::clipboard::Kind::Standard, selection);
+    //                             }
+    //                         }
+    //                         Binding::Cut => {
+    //                             self.start_new_change(&mut editor, state);
+    //                             if let Some(content) = editor.copy_selection() {
+    //                                 clipboard.write(iced::advanced::clipboard::Kind::Standard, content);
+    //                                 editor.action(cosmic_text::Action::Delete);
+    //                             }
+    //                         }
+    //                         Binding::Paste => {
+    //                             if let Some(content) =
+    //                                 clipboard.read(iced::advanced::clipboard::Kind::Standard)
+    //                             {
+    //                                 self.start_new_change(&mut editor, state);
+    //                                 editor.insert_string(&content, None);
+    //                             }
+    //                         }
+    //                         Binding::Move(binding_motion) => {
+    //                             self.start_new_change(&mut editor, state);
+    //                             if let Some((start, end)) = editor.selection_bounds() {
+    //                                 editor.set_selection(cosmic_text::Selection::None);
 
-                                match binding_motion {
-                                    // just move cursor
-                                    BindingMotion::Home
-                                    | BindingMotion::End
-                                    | BindingMotion::DocumentStart
-                                    | BindingMotion::DocumentEnd => {
-                                        editor.action(cosmic_text::Action::Motion(
-                                            binding_motion.to_cosmic_motion(),
-                                        ))
-                                    }
+    //                                 match binding_motion {
+    //                                     // just move cursor
+    //                                     BindingMotion::Home
+    //                                     | BindingMotion::End
+    //                                     | BindingMotion::DocumentStart
+    //                                     | BindingMotion::DocumentEnd => {
+    //                                         editor.action(cosmic_text::Action::Motion(
+    //                                             binding_motion.to_cosmic_motion(),
+    //                                         ))
+    //                                     }
 
-                                    // set cursor to start/end of selection
-                                    BindingMotion::Left
-                                    | BindingMotion::Up
-                                    | BindingMotion::WordLeft
-                                    | BindingMotion::PageUp => editor.set_cursor(start),
+    //                                     // set cursor to start/end of selection
+    //                                     BindingMotion::Left
+    //                                     | BindingMotion::Up
+    //                                     | BindingMotion::WordLeft
+    //                                     | BindingMotion::PageUp => editor.set_cursor(start),
 
-                                    BindingMotion::Right
-                                    | BindingMotion::Down
-                                    | BindingMotion::PageDown
-                                    | BindingMotion::WordRight => editor.set_cursor(end),
-                                }
-                            } else {
-                                editor.action(cosmic_text::Action::Motion(
-                                    binding_motion.to_cosmic_motion(),
-                                ))
-                            }
-                        }
-                        Binding::Select(binding_motion) => {
-                            let cursor = editor.cursor();
+    //                                     BindingMotion::Right
+    //                                     | BindingMotion::Down
+    //                                     | BindingMotion::PageDown
+    //                                     | BindingMotion::WordRight => editor.set_cursor(end),
+    //                                 }
+    //                             } else {
+    //                                 editor.action(cosmic_text::Action::Motion(
+    //                                     binding_motion.to_cosmic_motion(),
+    //                                 ))
+    //                             }
+    //                         }
+    //                         Binding::Select(binding_motion) => {
+    //                             let cursor = editor.cursor();
 
-                            if editor.selection_bounds().is_none() {
-                                editor.set_selection(cosmic_text::Selection::Normal(cursor));
-                            }
+    //                             if editor.selection_bounds().is_none() {
+    //                                 editor.set_selection(cosmic_text::Selection::Normal(cursor));
+    //                             }
 
-                            editor.action(cosmic_text::Action::Motion(
-                                binding_motion.to_cosmic_motion(),
-                            ));
+    //                             editor.action(cosmic_text::Action::Motion(
+    //                                 binding_motion.to_cosmic_motion(),
+    //                             ));
 
-                            // deselect if go back to same position
-                            if let Some((start, end)) = editor.selection_bounds() {
-                                if start.line == end.line && start.index == end.index {
-                                    editor.set_selection(cosmic_text::Selection::None);
-                                }
-                            }
-                        }
-                        Binding::SelectAll => {
-                            let has_content = editor.with_buffer(|buffer| {
-                                // buffer has content
-                                buffer.lines.len() > 1
-                                    || buffer
-                                        .lines
-                                        .first()
-                                        .is_some_and(|line| !line.text().is_empty())
-                            });
+    //                             // deselect if go back to same position
+    //                             if let Some((start, end)) = editor.selection_bounds() {
+    //                                 if start.line == end.line && start.index == end.index {
+    //                                     editor.set_selection(cosmic_text::Selection::None);
+    //                                 }
+    //                             }
+    //                         }
+    //                         Binding::SelectAll => {
+    //                             let has_content = editor.with_buffer(|buffer| {
+    //                                 // buffer has content
+    //                                 buffer.lines.len() > 1
+    //                                     || buffer
+    //                                         .lines
+    //                                         .first()
+    //                                         .is_some_and(|line| !line.text().is_empty())
+    //                             });
 
-                            if has_content {
-                                let cursor = editor.cursor();
-                                editor.set_selection(cosmic_text::Selection::Normal(
-                                    cosmic_text::Cursor {
-                                        line: 0,
-                                        index: 0,
-                                        ..cursor
-                                    },
-                                ));
+    //                             if has_content {
+    //                                 let cursor = editor.cursor();
+    //                                 editor.set_selection(cosmic_text::Selection::Normal(
+    //                                     cosmic_text::Cursor {
+    //                                         line: 0,
+    //                                         index: 0,
+    //                                         ..cursor
+    //                                     },
+    //                                 ));
 
-                                editor.action(cosmic_text::Action::Motion(
-                                    cosmic_text::Motion::BufferEnd,
-                                ));
-                            }
-                        }
-                        Binding::Undo => {
-                            if let Some(change) = &mut editor.finish_change() {
-                                change.reverse();
-                                editor.apply_change(&change);
-                                state.redo_buffer.push(change.clone());
-                            } else {
-                                if let Some(change) = &mut state.undo_buffer.pop() {
-                                    change.reverse();
-                                    editor.apply_change(&change);
-                                    state.redo_buffer.push(change.clone());
-                                }
-                            }
-                        }
-                        Binding::Redo => {
-                            if let Some(_) = &mut editor.finish_change() {
-                                // no redos allowed if changing
-                            } else {
-                                if let Some(change) = &mut state.redo_buffer.pop() {
-                                    change.reverse();
-                                    editor.apply_change(&change);
-                                }
-                            }
-                        }
-                    }
-                    status = Status::Captured;
-                } else if let keyboard::Event::KeyPressed {
-                    text, modifiers, ..
-                } = event
-                {
-                    if !modifiers.logo() && !modifiers.control() && !modifiers.alt() {
-                        if let Some(text) = text {
-                            if let Some(c) = text.chars().find(|c| !c.is_control()) {
-                                editor.start_change();
-                                editor.insert_string(&c.to_string(), None);
-                                status = Status::Captured
-                            }
-                        }
-                    }
-                }
-            }
-            iced::Event::Mouse(event) => match event {
-                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
-                    self.start_new_change(&mut editor, state);
-                    if let Some(pos) = cursor.position_in(layout.bounds()) {
-                        let mut x = pos.x - self.padding.left - gutter_width as f32;
-                        let y = pos.y - self.padding.top;
+    //                                 editor.action(cosmic_text::Action::Motion(
+    //                                     cosmic_text::Motion::BufferEnd,
+    //                                 ));
+    //                             }
+    //                         }
+    //                         Binding::Undo => {
+    //                             if let Some(change) = &mut editor.finish_change() {
+    //                                 change.reverse();
+    //                                 editor.apply_change(&change);
+    //                                 state.redo_buffer.push(change.clone());
+    //                             } else {
+    //                                 if let Some(change) = &mut state.undo_buffer.pop() {
+    //                                     change.reverse();
+    //                                     editor.apply_change(&change);
+    //                                     state.redo_buffer.push(change.clone());
+    //                                 }
+    //                             }
+    //                         }
+    //                         Binding::Redo => {
+    //                             if let Some(_) = &mut editor.finish_change() {
+    //                                 // no redos allowed if changing
+    //                             } else {
+    //                                 if let Some(change) = &mut state.redo_buffer.pop() {
+    //                                     change.reverse();
+    //                                     editor.apply_change(&change);
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                     status = Status::Captured;
+    //                 } else if let keyboard::Event::KeyPressed {
+    //                     text, modifiers, ..
+    //                 } = event
+    //                 {
+    //                     if !modifiers.logo() && !modifiers.control() && !modifiers.alt() {
+    //                         if let Some(text) = text {
+    //                             if let Some(c) = text.chars().find(|c| !c.is_control()) {
+    //                                 editor.start_change();
+    //                                 editor.insert_string(&c.to_string(), None);
+    //                                 status = Status::Captured
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //             iced::Event::Mouse(event) => match event {
+    //                 iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
+    //                     self.start_new_change(&mut editor, state);
+    //                     if let Some(pos) = cursor.position_in(layout.bounds()) {
+    //                         let mut x = pos.x - self.padding.left - gutter_width as f32;
+    //                         let y = pos.y - self.padding.top;
 
-                        // checks if x, y not in gutter
-                        if x >= 0.0
-                            && x < buffer_size.0.unwrap_or(0.0)
-                            && y >= 0.0
-                            && y < buffer_size.1.unwrap_or(0.0)
-                        {
-                            x += buffer_scroll.horizontal;
-                            // handle click kind
-                            let kind = if let Some((kind, timing, at)) = state.click_last.take() {
-                                if timing.elapsed() < self.click_timing && x == at.0 && y == at.1 {
-                                    match kind {
-                                        // rotate between kinds
-                                        ClickKind::Single => ClickKind::Double,
-                                        ClickKind::Double => ClickKind::Triple,
-                                        ClickKind::Triple => ClickKind::Single,
-                                    }
-                                } else {
-                                    ClickKind::Single
-                                }
-                            } else {
-                                ClickKind::Single
-                            };
+    //                         // checks if x, y not in gutter
+    //                         if x >= 0.0
+    //                             && x < buffer_size.0.unwrap_or(0.0)
+    //                             && y >= 0.0
+    //                             && y < buffer_size.1.unwrap_or(0.0)
+    //                         {
+    //                             x += buffer_scroll.horizontal;
+    //                             // handle click kind
+    //                             let kind = if let Some((kind, timing, at)) = state.click_last.take() {
+    //                                 if timing.elapsed() < self.click_timing && x == at.0 && y == at.1 {
+    //                                     match kind {
+    //                                         // rotate between kinds
+    //                                         ClickKind::Single => ClickKind::Double,
+    //                                         ClickKind::Double => ClickKind::Triple,
+    //                                         ClickKind::Triple => ClickKind::Single,
+    //                                     }
+    //                                 } else {
+    //                                     ClickKind::Single
+    //                                 }
+    //                             } else {
+    //                                 ClickKind::Single
+    //                             };
 
-                            match kind {
-                                ClickKind::Single => editor.action(cosmic_text::Action::Click {
-                                    x: x as i32,
-                                    y: y as i32,
-                                }),
-                                ClickKind::Double => {
-                                    editor.action(cosmic_text::Action::DoubleClick {
-                                        x: x as i32,
-                                        y: y as i32,
-                                    })
-                                }
-                                ClickKind::Triple => {
-                                    editor.action(cosmic_text::Action::TripleClick {
-                                        x: x as i32,
-                                        y: y as i32,
-                                    })
-                                }
-                            }
-                            state.click_last = Some((kind, Instant::now(), (x, y)));
-                            state.dragging = true;
-                        }
-                        state.focused = true;
-                        status = Status::Captured;
-                    } else {
-                        // click somewhere else
-                        state.focused = false;
-                    }
-                }
-                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) => {
-                    state.dragging = false;
-                    self.auto_scroll = None;
+    //                             match kind {
+    //                                 ClickKind::Single => editor.action(cosmic_text::Action::Click {
+    //                                     x: x as i32,
+    //                                     y: y as i32,
+    //                                 }),
+    //                                 ClickKind::Double => {
+    //                                     editor.action(cosmic_text::Action::DoubleClick {
+    //                                         x: x as i32,
+    //                                         y: y as i32,
+    //                                     })
+    //                                 }
+    //                                 ClickKind::Triple => {
+    //                                     editor.action(cosmic_text::Action::TripleClick {
+    //                                         x: x as i32,
+    //                                         y: y as i32,
+    //                                     })
+    //                                 }
+    //                             }
+    //                             state.click_last = Some((kind, Instant::now(), (x, y)));
+    //                             state.dragging = true;
+    //                         }
+    //                         state.focused = true;
+    //                         status = Status::Captured;
+    //                     } else {
+    //                         // click somewhere else
+    //                         state.focused = false;
+    //                     }
+    //                 }
+    //                 iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) => {
+    //                     state.dragging = false;
+    //                     self.auto_scroll = None;
 
-                    status = Status::Captured;
-                    shell.publish(Message::SetAutoScroll(None));
-                }
-                iced::mouse::Event::CursorMoved { .. } => {
-                    if state.dragging {
-                        if let Some(pos) = cursor.position() {
-                            // cares when cursor is outside of window
-                            let mut x =
-                                pos.x - layout.bounds().x - self.padding.left - gutter_width as f32;
-                            let y = pos.y - layout.bounds().y - self.padding.top;
+    //                     status = Status::Captured;
+    //                     shell.publish(Message::SetAutoScroll(None));
+    //                 }
+    //                 iced::mouse::Event::CursorMoved { .. } => {
+    //                     if state.dragging {
+    //                         if let Some(pos) = cursor.position() {
+    //                             // cares when cursor is outside of window
+    //                             let mut x =
+    //                                 pos.x - layout.bounds().x - self.padding.left - gutter_width as f32;
+    //                             let y = pos.y - layout.bounds().y - self.padding.top;
 
-                            x += buffer_scroll.horizontal;
+    //                             x += buffer_scroll.horizontal;
 
-                            editor.action(cosmic_text::Action::Drag {
-                                x: x as i32,
-                                y: y as i32,
-                            });
-                            let auto_scroll = editor.with_buffer(|buffer| {
-                                //TODO: ideal auto scroll speed
-                                let speed = 1.01;
-                                if y < 0.0 {
-                                    Some(y * speed)
-                                } else if y > buffer.size().1.unwrap_or(0.0) {
-                                    Some((y - buffer.size().1.unwrap_or(0.0)) * speed)
-                                } else {
-                                    None
-                                }
-                            });
-                            status = Status::Captured;
-                            shell.publish(Message::SetAutoScroll(auto_scroll));
-                        }
-                    }
-                }
-                // TODO scroll past editor bounds
-                iced::mouse::Event::WheelScrolled { delta } => {
-                    if let Some(_) = cursor.position_in(layout.bounds()) {
-                        let (x, lines_y) = match delta {
-                            iced::mouse::ScrollDelta::Lines { x, y } => {
-                                // method from iced text_editor
-                                let lines_y = if y.abs() > 0.0 {
-                                    y.signum() * -(y.abs() * 4.0).max(1.0)
-                                } else {
-                                    0.0
-                                };
-                                (x * 4.0, lines_y)
-                            }
-                            iced::mouse::ScrollDelta::Pixels { x, y } => {
-                                // method from iced text_editor
-                                let lines_y = -y / 4.0;
+    //                             editor.action(cosmic_text::Action::Drag {
+    //                                 x: x as i32,
+    //                                 y: y as i32,
+    //                             });
+    //                             let auto_scroll = editor.with_buffer(|buffer| {
+    //                                 //TODO: ideal auto scroll speed
+    //                                 let speed = 1.01;
+    //                                 if y < 0.0 {
+    //                                     Some(y * speed)
+    //                                 } else if y > buffer.size().1.unwrap_or(0.0) {
+    //                                     Some((y - buffer.size().1.unwrap_or(0.0)) * speed)
+    //                                 } else {
+    //                                     None
+    //                                 }
+    //                             });
+    //                             status = Status::Captured;
+    //                             shell.publish(Message::SetAutoScroll(auto_scroll));
+    //                         }
+    //                     }
+    //                 }
+    //                 // TODO scroll past editor bounds
+    //                 iced::mouse::Event::WheelScrolled { delta } => {
+    //                     if let Some(_) = cursor.position_in(layout.bounds()) {
+    //                         let (x, lines_y) = match delta {
+    //                             iced::mouse::ScrollDelta::Lines { x, y } => {
+    //                                 // method from iced text_editor
+    //                                 let lines_y = if y.abs() > 0.0 {
+    //                                     y.signum() * -(y.abs() * 4.0).max(1.0)
+    //                                 } else {
+    //                                     0.0
+    //                                 };
+    //                                 (x * 4.0, lines_y)
+    //                             }
+    //                             iced::mouse::ScrollDelta::Pixels { x, y } => {
+    //                                 // method from iced text_editor
+    //                                 let lines_y = -y / 4.0;
 
-                                (x, lines_y)
-                            }
-                        };
+    //                                 (x, lines_y)
+    //                             }
+    //                         };
 
-                        let mut lines_y = lines_y + state.parial_scroll;
-                        state.parial_scroll = lines_y.fract();
-                        lines_y = lines_y.trunc();
+    //                         let mut lines_y = lines_y + state.parial_scroll;
+    //                         state.parial_scroll = lines_y.fract();
+    //                         lines_y = lines_y.trunc();
 
-                        // Note: mouse event + modifiers is still in PR https://github.com/iced-rs/iced/pull/2733
-                        if state.modifiers_shift {
-                            // scroll only y
-                            // Note: skipping set_scroll/action makes it a tad faster
-                            if lines_y != 0.0 {
-                                editor.with_buffer_mut(|buffer| {
-                                    let mut scroll = buffer.scroll();
-                                    let buffer_w = buffer.size().0.unwrap_or(0.0);
+    //                         // Note: mouse event + modifiers is still in PR https://github.com/iced-rs/iced/pull/2733
+    //                         if state.modifiers_shift {
+    //                             // scroll only y
+    //                             // Note: skipping set_scroll/action makes it a tad faster
+    //                             if lines_y != 0.0 {
+    //                                 editor.with_buffer_mut(|buffer| {
+    //                                     let mut scroll = buffer.scroll();
+    //                                     let buffer_w = buffer.size().0.unwrap_or(0.0);
 
-                                    scroll.horizontal +=
-                                        lines_y as f32 * buffer.metrics().font_size;
-                                    scroll.horizontal = scroll
-                                        .horizontal
-                                        .min(state.max_line_width.get() - buffer_w)
-                                        .max(0.0);
+    //                                     scroll.horizontal +=
+    //                                         lines_y as f32 * buffer.metrics().font_size;
+    //                                     scroll.horizontal = scroll
+    //                                         .horizontal
+    //                                         .min(state.max_line_width.get() - buffer_w)
+    //                                         .max(0.0);
 
-                                    buffer.set_scroll(scroll);
-                                });
-                            }
-                        } else {
-                            // scroll x and y
-                            if lines_y != 0.0 {
-                                editor.action(cosmic_text::Action::Scroll {
-                                    lines: lines_y as i32,
-                                });
-                            }
+    //                                     buffer.set_scroll(scroll);
+    //                                 });
+    //                             }
+    //                         } else {
+    //                             // scroll x and y
+    //                             if lines_y != 0.0 {
+    //                                 editor.action(cosmic_text::Action::Scroll {
+    //                                     lines: lines_y as i32,
+    //                                 });
+    //                             }
 
-                            if x != 0.0 {
-                                editor.with_buffer_mut(|buffer| {
-                                    let mut scroll = buffer.scroll();
-                                    let buffer_w = buffer.size().0.unwrap_or(0.0);
+    //                             if x != 0.0 {
+    //                                 editor.with_buffer_mut(|buffer| {
+    //                                     let mut scroll = buffer.scroll();
+    //                                     let buffer_w = buffer.size().0.unwrap_or(0.0);
 
-                                    scroll.horizontal += -x;
-                                    scroll.horizontal = scroll
-                                        .horizontal
-                                        .min(state.max_line_width.get() - buffer_w)
-                                        .max(0.0);
+    //                                     scroll.horizontal += -x;
+    //                                     scroll.horizontal = scroll
+    //                                         .horizontal
+    //                                         .min(state.max_line_width.get() - buffer_w)
+    //                                         .max(0.0);
 
-                                    buffer.set_scroll(scroll);
-                                });
-                            }
-                        }
-                        status = Status::Captured;
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
-        };
+    //                                     buffer.set_scroll(scroll);
+    //                                 });
+    //                             }
+    //                         }
+    //                         status = Status::Captured;
+    //                     }
+    //                 }
+    //                 _ => {}
+    //             },
+    //             _ => {}
+    //         };
 
-        status
-    }
+    //         status
+    //     }
 
     fn operate(
-        &self,
+        &mut self,
         tree: &mut widget::Tree,
-        _layout: Layout<'_>,
+        layout: layout::Layout<'_>,
         _renderer: &Renderer,
         operation: &mut dyn widget::Operation,
     ) {
         let state = tree.state.downcast_mut::<State>();
 
-        operation.focusable(state, self.id.as_ref());
+        // operation.focusable(state, self.id.as_ref());
+        operation.focusable(self.id.as_ref(), layout.bounds(), state);
     }
 
-    fn mouse_interaction(
-        &self,
-        tree: &widget::Tree,
-        layout: Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        _viewport: &Rectangle,
-        _renderer: &Renderer,
-    ) -> iced::advanced::mouse::Interaction {
-        let state = tree.state.downcast_ref::<State>();
+    //     fn mouse_interaction(
+    //         &self,
+    //         tree: &widget::Tree,
+    //         layout: Layout<'_>,
+    //         cursor: iced::advanced::mouse::Cursor,
+    //         _viewport: &Rectangle,
+    //         _renderer: &Renderer,
+    //     ) -> iced::advanced::mouse::Interaction {
+    //         let state = tree.state.downcast_ref::<State>();
 
-        if let Some(p) = cursor.position_in(layout.bounds()) {
-            let gutter_width = state.gutter_width.get();
-            let editor = self.editor.read().unwrap();
-            let buffer_size = editor.with_buffer(|buffer| buffer.size());
+    //         if let Some(p) = cursor.position_in(layout.bounds()) {
+    //             let gutter_width = state.gutter_width.get();
+    //             let editor = self.editor.read().unwrap();
+    //             let buffer_size = editor.with_buffer(|buffer| buffer.size());
 
-            let x = p.x - self.padding.left - gutter_width as f32;
-            let y = p.y - self.padding.top;
-            if x >= 0.0
-                && x < buffer_size.0.unwrap_or(0.0)
-                && y >= 0.0
-                && y < buffer_size.1.unwrap_or(0.0)
-            {
-                return mouse::Interaction::Text;
-            }
-        }
+    //             let x = p.x - self.padding.left - gutter_width as f32;
+    //             let y = p.y - self.padding.top;
+    //             if x >= 0.0
+    //                 && x < buffer_size.0.unwrap_or(0.0)
+    //                 && y >= 0.0
+    //                 && y < buffer_size.1.unwrap_or(0.0)
+    //             {
+    //                 return mouse::Interaction::Text;
+    //             }
+    //         }
 
-        mouse::Interaction::Idle
-    }
+    //         mouse::Interaction::Idle
+    //     }
 }
 
-impl<'a, Theme, Renderer> From<TextBox<'a>> for Element<'a, Message, Theme, Renderer>
-where
-    Renderer: image::Renderer<Handle = iced::advanced::image::Handle>
-        + iced::advanced::text::Renderer<Font = iced::Font>,
-{
+// impl<'a, Theme, Renderer> From<TextBox<'a>> for Element<'a, Message, Theme, Renderer>
+// where
+//     Renderer: image::Renderer<Handle = iced::advanced::image::Handle>
+//         + iced::advanced::text::Renderer<Font = iced::Font>,
+impl<'a> From<TextBox<'a>> for Element<'a, Message> {
     fn from(value: TextBox<'a>) -> Self {
         Self::new(value)
     }
@@ -898,7 +909,7 @@ impl State {
     }
 }
 
-impl operation::Focusable for State {
+impl widget::operation::Focusable for State {
     fn is_focused(&self) -> bool {
         self.focused
     }
